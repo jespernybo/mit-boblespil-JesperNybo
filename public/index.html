@@ -25,7 +25,7 @@
         #skills-overlay h2 { font-size: 50px; color: #3498db; text-shadow: 0 0 20px #2980b9; margin-bottom: 10px; }
         #skills-overlay h3 { font-size: 24px; margin-bottom: 30px; color: #bdc3c7; }
         
-        .cards-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 600px; }
+        .cards-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
         .upg-card { background: rgba(26, 26, 46, 0.9); border: 2px solid #34495e; border-radius: 15px; padding: 20px; width: 220px; text-align: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         .upg-card:hover { transform: scale(1.05); border-color: #3498db; box-shadow: 0 10px 25px rgba(52, 152, 219, 0.4); background: rgba(41, 128, 185, 0.2); }
         
@@ -194,6 +194,16 @@
                 <p>Start med 5% mere masse og +500 score hver gang.</p>
                 <div class="stat">Masse: +<span id="stat-startsize">0</span>% | Score: +<span id="stat-startscore">0</span></div>
             </div>
+            <div class="upg-card" id="btn-upg-zoom">
+                <h4>🔎 Zoom Ud</h4>
+                <p>Se mere af banen. Zoomer 5% ud pr. level. (Max 10)</p>
+                <div class="stat">Level: <span id="stat-zoom">0</span></div>
+            </div>
+            <div class="upg-card" id="btn-upg-sprintspeed">
+                <h4>💨 Sprint Hastighed</h4>
+                <p>Løb endnu hurtigere, når du sprinter. (Max 10)</p>
+                <div class="stat">Level: <span id="stat-sprintspeed">0</span></div>
+            </div>
         </div>
         <button id="close-skills-btn">Tilbage til Menu</button>
     </div>
@@ -274,6 +284,7 @@
         let otherPlayers = {}; let foods = []; let bots = {}; let viruses = []; let ejectedMass = []; 
         let feeders = []; let minimapBlinkTimer = 0; let soundWaves = [];
         let spaceDust = []; let slimeParticles = [];
+        let shockwaves = []; 
         
         let screenShake = 0; 
         let isPaused = false;
@@ -284,6 +295,15 @@
         const SCORE_MULTIPLIER = 100;     
         const GROWTH_SPEED = 0.35;      
         const WORLD_SIZE = 10000; 
+
+        // Anti-Ghosting filter
+        let ignoredIds = {};
+        function ignoreId(id) { ignoredIds[id] = Date.now(); }
+        function shouldIgnore(id) {
+            if (ignoredIds[id] && Date.now() - ignoredIds[id] < 1000) return true;
+            if (ignoredIds[id]) delete ignoredIds[id];
+            return false;
+        }
 
         let audioCtx = null;
         let currentBgmVolume = 0.5; 
@@ -342,6 +362,45 @@
             gainNode.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playEatBotSound() {
+            if (!audioCtx || !gameActive || currentSfxVolume === 0) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
+            
+            let vol = 0.15 * currentSfxVolume; 
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        function playEatSpecialSound() {
+            if (!audioCtx || !gameActive || currentSfxVolume === 0) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'square';
+            
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1);
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.2);
+            
+            let vol = 0.15 * currentSfxVolume;
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime + 0.2);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
         }
 
         function playDeathSound() {
@@ -447,6 +506,7 @@
             if(otherPlayers[data.id]) { 
                 let newCells = [];
                 data.cells.forEach(sc => {
+                    if (shouldIgnore(sc.cellId)) return; // Anti-ghosting
                     let existingCell = otherPlayers[data.id].cells ? otherPlayers[data.id].cells.find(c => c.cellId === sc.cellId) : null;
                     if (existingCell) {
                         existingCell.targetX = sc.x; existingCell.targetY = sc.y; existingCell.targetRadius = sc.radius;
@@ -483,10 +543,12 @@
         socket.on('botsUpdate', (serverBots) => { 
             let newBots = {};
             for(let id in serverBots) {
+                if (shouldIgnore(id)) continue; // Anti-ghosting
                 if(bots[id]) {
                     let b = bots[id];
                     b.targetX = serverBots[id].x; b.targetY = serverBots[id].y; b.targetRadius = serverBots[id].radius;
                     b.isSprinting = serverBots[id].isSprinting; b.vx = serverBots[id].vx; b.vy = serverBots[id].vy;
+                    b.behavior = serverBots[id].behavior; 
                     newBots[id] = b;
                 } else {
                     newBots[id] = {...serverBots[id], targetX: serverBots[id].x, targetY: serverBots[id].y, targetRadius: serverBots[id].radius};
@@ -496,10 +558,22 @@
         });
 
         socket.on('virusesUpdate', (serverViruses) => { 
-            let newV = []; serverViruses.forEach(sv => { let existing = viruses.find(v => v.id === sv.id); if (existing) { existing.x = sv.x; existing.y = sv.y; existing.radius = sv.radius; existing.eaten = sv.eaten; existing.vx = sv.vx; existing.vy = sv.vy; newV.push(existing); } else { newV.push({ ...sv, rotation: 0 }); } }); viruses = newV;
+            let newV = []; 
+            serverViruses.forEach(sv => { 
+                if (shouldIgnore(sv.id)) return; // Anti-ghosting
+                let existing = viruses.find(v => v.id === sv.id); 
+                if (existing) { 
+                    existing.x = sv.x; existing.y = sv.y; existing.radius = sv.radius; existing.eaten = sv.eaten; existing.vx = sv.vx; existing.vy = sv.vy; newV.push(existing); 
+                } else { 
+                    newV.push({ ...sv, rotation: 0 }); 
+                } 
+            }); 
+            viruses = newV;
         });
         
-        socket.on('ejectedMassUpdate', (massArray) => { ejectedMass = massArray; });
+        socket.on('ejectedMassUpdate', (massArray) => { 
+            ejectedMass = massArray.filter(m => !shouldIgnore(m.id)); // Anti-ghosting 
+        });
         
         socket.on('ejectedMassEaten', (massId) => { 
             let idx = ejectedMass.findIndex(m => m.id === massId);
@@ -610,7 +684,8 @@
         let bestScore = parseInt(localStorage.getItem('bobleHighscore')) || 0; highscoreDisplay.innerText = "🏆 Highscore: " + bestScore; let totalXP = parseInt(localStorage.getItem('bobleXP')) || 0; let highestScoreThisRun = 0; let myCurrentLevel = 1; let isQuitting = false; let quitTimer = 0;
         let invincibilityTimer = 0; 
 
-        let playerUpgrades = { food: 0, speed: 0, boost: 0, startSize: 0 }; 
+        // NYT: SprintSpeed er tilføjet til playerUpgrades dataen
+        let playerUpgrades = { food: 0, speed: 0, boost: 0, startSize: 0, zoom: 0, sprintSpeed: 0 }; 
         try { 
             const savedUpg = JSON.parse(localStorage.getItem('bobleUpgrades')); 
             if (savedUpg && typeof savedUpg === 'object') { 
@@ -618,6 +693,8 @@
                 playerUpgrades.speed = parseInt(savedUpg.speed) || 0; 
                 playerUpgrades.boost = parseInt(savedUpg.boost) || 0; 
                 playerUpgrades.startSize = parseInt(savedUpg.startSize) || 0; 
+                playerUpgrades.zoom = parseInt(savedUpg.zoom) || 0; 
+                playerUpgrades.sprintSpeed = parseInt(savedUpg.sprintSpeed) || 0; 
             } 
         } catch(e){}
         let unspentPoints = 0; 
@@ -629,7 +706,7 @@
             let currentLevel = Math.floor(Math.sqrt(totalXP / 100)) + 1; 
             if (currentLevel > 75) currentLevel = 75; 
             let totalPointsEarned = currentLevel - 1; 
-            let totalPointsSpent = playerUpgrades.food + playerUpgrades.speed + playerUpgrades.boost + playerUpgrades.startSize; 
+            let totalPointsSpent = playerUpgrades.food + playerUpgrades.speed + playerUpgrades.boost + playerUpgrades.startSize + (playerUpgrades.zoom || 0) + (playerUpgrades.sprintSpeed || 0); 
             unspentPoints = totalPointsEarned - totalPointsSpent; 
             
             document.getElementById('stat-food').innerText = playerUpgrades.food * 5; 
@@ -637,6 +714,8 @@
             document.getElementById('stat-boost').innerText = playerUpgrades.boost * 5; 
             document.getElementById('stat-startsize').innerText = playerUpgrades.startSize * 5; 
             document.getElementById('stat-startscore').innerText = (playerUpgrades.startSize || 0) * 500; 
+            document.getElementById('stat-zoom').innerText = playerUpgrades.zoom || 0; 
+            document.getElementById('stat-sprintspeed').innerText = playerUpgrades.sprintSpeed || 0; 
             
             unspentPointsSpan.innerText = unspentPoints; 
             
@@ -668,6 +747,25 @@
         document.getElementById('btn-upg-startsize').addEventListener('click', () => { 
             if(unspentPoints>0){ playerUpgrades.startSize++; saveUpgrades(); triggerUpgEffect('btn-upg-startsize', true); } else { triggerUpgEffect('btn-upg-startsize', false); }
         });
+        document.getElementById('btn-upg-zoom').addEventListener('click', () => { 
+            if(unspentPoints>0 && (playerUpgrades.zoom || 0) < 10){ 
+                playerUpgrades.zoom = (playerUpgrades.zoom || 0) + 1; 
+                saveUpgrades(); 
+                triggerUpgEffect('btn-upg-zoom', true); 
+            } else { 
+                triggerUpgEffect('btn-upg-zoom', false); 
+            }
+        });
+        // NYT: SprintSpeed opgraderings-klik
+        document.getElementById('btn-upg-sprintspeed').addEventListener('click', () => { 
+            if(unspentPoints>0 && (playerUpgrades.sprintSpeed || 0) < 10){ 
+                playerUpgrades.sprintSpeed = (playerUpgrades.sprintSpeed || 0) + 1; 
+                saveUpgrades(); 
+                triggerUpgEffect('btn-upg-sprintspeed', true); 
+            } else { 
+                triggerUpgEffect('btn-upg-sprintspeed', false); 
+            }
+        });
         
         function saveUpgrades() { localStorage.setItem('bobleUpgrades', JSON.stringify(playerUpgrades)); checkUpgrades(); }
 
@@ -695,7 +793,7 @@
         document.getElementById('modal-confirm-btn').addEventListener('click', () => {
             totalXP = 0; 
             localStorage.setItem('bobleXP', totalXP); 
-            playerUpgrades = { food: 0, speed: 0, boost: 0, startSize: 0 }; 
+            playerUpgrades = { food: 0, speed: 0, boost: 0, startSize: 0, zoom: 0, sprintSpeed: 0 }; 
             localStorage.setItem('bobleUpgrades', JSON.stringify(playerUpgrades)); 
             bestScore = 0;
             localStorage.setItem('bobleHighscore', bestScore);
@@ -820,7 +918,7 @@
         function splitPlayer() {
             let newCells = []; let currentTotal = playerCells.length; let didSplit = false; let now = performance.now();
             playerCells.forEach(cell => {
-                if (cell.radius > 35 && currentTotal + newCells.length < 16 && !cell.isBeingAbsorbed) {
+                if (cell.radius > 35 && currentTotal + newCells.length < 10 && !cell.isBeingAbsorbed) {
                     let newRadius = Math.sqrt((cell.radius * cell.radius) / 2); cell.radius = newRadius; cell.splitTime = now;
                     let dist = Math.hypot(mouse.x, mouse.y) || 1; let dirX = mouse.x / dist; let dirY = mouse.y / dist;
                     let spawnX = cell.x + dirX * newRadius; let spawnY = cell.y + dirY * newRadius;
@@ -861,7 +959,11 @@
         }
 
         function popPlayerCell(index) { 
-            let cell = playerCells[index]; if (playerCells.length >= 16) return; let now = performance.now(); let piecesToMake = Math.min(8, 16 - playerCells.length); let newRadius = Math.sqrt((cell.radius * cell.radius) / (piecesToMake + 1)); cell.radius = newRadius; cell.splitTime = now; for(let p = 0; p < piecesToMake; p++) { let angle = (Math.PI * 2 / piecesToMake) * p; let speed = 10 + Math.random() * 8; playerCells.push({ cellId: Math.random(), x: cell.x, y: cell.y, radius: newRadius, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, hue: cell.hue, wobble: 1.0, splitTime: now }); } 
+            let cell = playerCells[index]; 
+            if (playerCells.length >= 10) return; 
+            let now = performance.now(); 
+            let piecesToMake = Math.min(8, 10 - playerCells.length); 
+            let newRadius = Math.sqrt((cell.radius * cell.radius) / (piecesToMake + 1)); cell.radius = newRadius; cell.splitTime = now; for(let p = 0; p < piecesToMake; p++) { let angle = (Math.PI * 2 / piecesToMake) * p; let speed = 10 + Math.random() * 8; playerCells.push({ cellId: Math.random(), x: cell.x, y: cell.y, radius: newRadius, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, hue: cell.hue, wobble: 1.0, splitTime: now }); } 
             let largestRadius = Math.max(...playerCells.map(c => c.radius));
             mergeCooldown = 10 + (largestRadius * 0.05); 
         }
@@ -990,7 +1092,9 @@
                     let screenScale = Math.max(canvas.width / 1920, canvas.height / 1080);
                     let isActuallySprinting = isSprinting && playerCells.some(c => c.radius > 25);
                     let sprintZoom = isActuallySprinting ? 0.85 : 1.0;
-                    const baseTargetZoom = (150 / (Math.sqrt(totalArea) * 0.4 + 60)) * sprintZoom;
+                    
+                    let zoomUpgradeMultiplier = 1 - ((playerUpgrades.zoom || 0) * 0.05);
+                    const baseTargetZoom = (150 / (Math.sqrt(totalArea) * 0.4 + 60)) * sprintZoom * zoomUpgradeMultiplier;
                     const targetZoom = baseTargetZoom * screenScale;
                     currentZoom += (targetZoom - currentZoom) * 0.08; 
 
@@ -1008,7 +1112,10 @@
                         let baseSpeed = Math.max(1.2, 35 / Math.sqrt(cell.radius)) * speedMultiplier * (deltaTime * 60);
                         
                         if (isSprinting && cell.radius > 25 && !cell.isBeingAbsorbed) { 
-                            baseSpeed *= 1.5; 
+                            // NYT: Sprint speed opgradering (giver op til 50% mere fart her)
+                            let sprintMult = 1.5 + ((playerUpgrades.sprintSpeed || 0) * 0.05);
+                            baseSpeed *= sprintMult; 
+                            
                             cell.sprintDropTimer = (cell.sprintDropTimer || 0) + deltaTime;
                             if (cell.sprintDropTimer > 0.1) {
                                 cell.sprintDropTimer = 0;
@@ -1102,9 +1209,13 @@
                     if (!amIInvincible && !godMode) {
                         for (let i = playerCells.length - 1; i >= 0; i--) { 
                             let cell = playerCells[i]; 
+                            let popped = false;
                             for (let v = viruses.length - 1; v >= 0; v--) { 
                                 let virus = viruses[v]; let isMissile = Math.abs(virus.vx) > 5 || Math.abs(virus.vy) > 5; let dist = Math.hypot(cell.x - virus.x, cell.y - virus.y); 
-                                if (cell.radius > virus.radius * 1.15 && dist < cell.radius && !isMissile) { 
+                                if (!popped && cell.radius > virus.radius * 1.15 && dist < cell.radius && !isMissile) { 
+                                    popped = true;
+                                    ignoreId(virus.id); 
+                                    viruses.splice(v, 1);
                                     popPlayerCell(i); 
                                     socket.emit('virusPopped', virus.id); 
                                     screenShake = 20; 
@@ -1188,6 +1299,7 @@
             if (gameActive && playerCells.length > 0 && (!amIInvincible || godMode)) {
                 for (let i = playerCells.length - 1; i >= 0; i--) {
                     let myCell = playerCells[i];
+                    
                     for (let id in otherPlayers) { 
                         if (myAllies.includes(id)) continue; 
 
@@ -1200,11 +1312,13 @@
                                 let gain = (enemyCell.radius ** 2 * 0.90) * foodUpgradeMultiplier;
                                 myCell.radius = Math.sqrt(myCell.radius ** 2 + gain); 
                                 myCell.wobble = 1.0; 
+                                ignoreId(enemyCell.cellId); 
                                 socket.emit('ateOtherPlayerCell', { victimId: id, cellId: enemyCell.cellId }); 
                                 enemy.cells.splice(eIndex, 1); 
                                 
-                                screenShake = 8;
-                                playEatSound();
+                                screenShake = 25;
+                                playEatSpecialSound();
+                                shockwaves.push({ x: enemyCell.x, y: enemyCell.y, radius: enemyCell.radius, maxRadius: enemyCell.radius * 4, alpha: 1, color: enemy.hue || 0, text: "PLAYER KILL! 🔥" });
                             } 
                         } 
                     }
@@ -1214,11 +1328,18 @@
                             let gain = (bot.radius ** 2 * 0.90) * foodUpgradeMultiplier;
                             myCell.radius = Math.sqrt(myCell.radius ** 2 + gain); 
                             myCell.wobble = 1.0; 
+                            ignoreId(id); 
                             socket.emit('ateBot', id); 
                             delete bots[id]; 
                             
-                            screenShake = 8;
-                            playEatSound();
+                            if (bot.behavior === 'elite') {
+                                screenShake = 25;
+                                playEatSpecialSound();
+                                shockwaves.push({ x: bot.x, y: bot.y, radius: bot.radius, maxRadius: bot.radius * 4, alpha: 1, color: bot.hue || 0, text: "ELITE KILL! 💀" });
+                            } else {
+                                screenShake = 8;
+                                playEatBotSound();
+                            }
                         } 
                     }
                 }
@@ -1286,9 +1407,11 @@
                 if (food.x + 10 > viewLeft && food.x - 10 < viewRight && food.y + 10 > viewTop && food.y - 10 < viewBottom) { 
                     ctx.beginPath(); ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2); ctx.fillStyle = `hsl(${food.hue}, 80%, 60%)`; ctx.fill(); 
                 } 
+                let eaten = false;
                 if (gameActive && playerCells.length > 0) { 
                     playerCells.forEach(cell => { 
-                        if (Math.hypot(cell.x - food.x, cell.y - food.y) < cell.radius) { 
+                        if (!eaten && Math.hypot(cell.x - food.x, cell.y - food.y) < cell.radius) { 
+                            eaten = true;
                             let gain = (food.radius ** 2 * GROWTH_SPEED) * Math.max(0.025, 15 / cell.radius) * 4 * foodUpgradeMultiplier;
                             cell.radius = Math.sqrt(cell.radius ** 2 + gain); 
                             socket.emit('foodEaten', food.id); foods.splice(i, 1); 
@@ -1306,14 +1429,18 @@
                     if (em.isSprintDrop) { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.stroke(); } 
                     else { ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.stroke(); }
                 } 
+                let eaten = false;
                 if (gameActive && playerCells.length > 0) { 
                     playerCells.forEach(cell => { 
-                        if (cell.radius > em.radius * 1.1 && Math.hypot(cell.x - em.x, cell.y - em.y) < cell.radius) { 
+                        if (!eaten && cell.radius > em.radius * 1.1 && Math.hypot(cell.x - em.x, cell.y - em.y) < cell.radius) { 
+                            eaten = true;
                             let gain = 0;
                             if (em.isSprintDrop) gain = (6 ** 2 * GROWTH_SPEED) * Math.max(0.025, 15 / cell.radius) * 8 * foodUpgradeMultiplier;
                             else gain = (em.radius ** 2) * (em.massMultiplier || 1) * GROWTH_SPEED * foodUpgradeMultiplier;
                             cell.radius = Math.sqrt(cell.radius ** 2 + gain);
-                            cell.wobble = Math.min(0.2, (cell.wobble || 0) + 0.1); socket.emit('eatEjectedMass', em.id); ejectedMass.splice(i, 1); 
+                            cell.wobble = Math.min(0.2, (cell.wobble || 0) + 0.1); 
+                            ignoreId(em.id); 
+                            socket.emit('eatEjectedMass', em.id); ejectedMass.splice(i, 1); 
                             
                             playEatSound();
                         } 
@@ -1362,6 +1489,42 @@
                     ctx.fill();
                 }
             }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                let sw = shockwaves[i];
+                sw.radius += deltaTime * 800; 
+                sw.alpha -= deltaTime * 1.2; 
+                if (sw.alpha <= 0) {
+                    shockwaves.splice(i, 1);
+                    continue;
+                }
+                if (sw.x > viewLeft - 500 && sw.x < viewRight + 500 && sw.y > viewTop - 500 && sw.y < viewBottom + 500) {
+                    ctx.save();
+                    ctx.globalAlpha = sw.alpha;
+                    
+                    ctx.beginPath();
+                    ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                    ctx.lineWidth = 15 * sw.alpha;
+                    ctx.strokeStyle = `hsl(${sw.color}, 100%, 70%)`;
+                    ctx.shadowColor = `hsl(${sw.color}, 100%, 60%)`;
+                    ctx.shadowBlur = 30;
+                    ctx.stroke();
+
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    let fontSize = 40 + (1 - sw.alpha) * 50; 
+                    ctx.font = "bold " + fontSize + "px Arial";
+                    ctx.fillStyle = "#f1c40f"; 
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = "black";
+                    let textY = sw.y - sw.radius * 0.3;
+                    ctx.strokeText(sw.text, sw.x, textY);
+                    ctx.fillText(sw.text, sw.x, textY);
+                    
+                    ctx.restore();
+                }
+            }
+
             ctx.globalAlpha = 1.0;
 
             ctx.restore(); 
