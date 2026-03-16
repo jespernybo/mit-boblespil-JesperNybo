@@ -73,6 +73,12 @@
         .upload-btn { background-color: #3498db; }
         .remove-skin-btn { background-color: #e74c3c; display: none; }
         input[type="file"] { display: none; }
+        
+        .volume-container { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; margin-bottom: 20px; background: rgba(0, 0, 0, 0.4); padding: 15px; border-radius: 15px; border: 1px solid #34495e; box-sizing: border-box; }
+        .volume-row { display: flex; justify-content: space-between; align-items: center; color: #ecf0f1; font-weight: bold; font-size: 14px; }
+        .volume-row input[type=range] { width: 60%; -webkit-appearance: none; height: 8px; border-radius: 5px; background: #2c3e50; outline: none; border: 1px solid #1a1a2e;}
+        .volume-row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #3498db; cursor: pointer; border: 2px solid #ecf0f1; }
+
         #play-btn { padding: 15px 60px; font-size: 28px; background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4); transition: transform 0.2s; }
         #play-btn:hover { transform: scale(1.05); }
         
@@ -83,7 +89,6 @@
 
         #death-message { color: #e74c3c; font-weight: bold; font-size: 24px; margin-bottom: 15px; display: none; text-shadow: 0 0 10px red; }
 
-        /* NYT: Den samlede HUD kasse til højre som holder styr på Leaderboard og Kill-feed */
         #hud-right { position: absolute; top: 20px; right: 20px; display: none; flex-direction: column; align-items: flex-end; z-index: 200; pointer-events: none; width: 250px; }
         
         #leaderboard { width: 220px; background: rgba(26, 26, 46, 0.9); border: 2px solid #3498db; border-radius: 10px; color: #ecf0f1; padding: 15px; box-sizing: border-box; margin-bottom: 10px; pointer-events: auto; }
@@ -95,7 +100,7 @@
         .me-leaderboard { color: #f1c40f; font-weight: bold; }
         
         #kill-feed { display: flex; flex-direction: column; gap: 5px; width: 100%; align-items: flex-end; margin-top: 10px; pointer-events: none; }
-        .kill-msg { background: rgba(0, 0, 0, 0.6); color: white; padding: 5px 10px; border-radius: 5px; font-size: 13px; font-weight: bold; border-right: 3px solid #e74c3c; opacity: 1; transition: opacity 1s; text-shadow: 1px 1px 2px black; }
+        .kill-msg { background: rgba(0, 0, 0, 0.6); color: white; padding: 5px 10px; border-radius: 5px; font-size: 13px; font-weight: bold; border-right: 3px solid #e74c3c; opacity: 1; transition: opacity 1s; text-shadow: 1px 1px 2px black; pointer-events: none; }
         .kill-msg .killer { color: #3498db; }
         .kill-msg .victim { color: #e74c3c; }
 
@@ -134,7 +139,19 @@
         <h2>PAUSE</h2>
         <p style="margin-bottom: 20px; color: #bdc3c7;">Vælg en spiller for alliance (ESC for at fortsætte)</p>
         <div id="player-list-container"><div id="player-list"></div></div>
-        <button onclick="togglePause()" style="margin-top: 30px; padding: 10px 30px; background: #3498db; border: none; color: white; font-weight: bold; border-radius: 10px; cursor: pointer; font-size: 16px;">Fortsæt Spillet</button>
+        
+        <div class="volume-container" style="margin-top: 20px;">
+            <div class="volume-row">
+                <label>🎵 Musik:</label>
+                <input type="range" class="bgm-slider" min="0" max="100" value="50">
+            </div>
+            <div class="volume-row">
+                <label>🔊 Effektlyd:</label>
+                <input type="range" class="sfx-slider" min="0" max="100" value="50">
+            </div>
+        </div>
+
+        <button onclick="togglePause()" style="margin-top: 20px; padding: 10px 30px; background: #3498db; border: none; color: white; font-weight: bold; border-radius: 10px; cursor: pointer; font-size: 16px;">Fortsæt Spillet</button>
     </div>
 
     <div id="chat-container">
@@ -198,6 +215,18 @@
                 <button id="remove-skin-btn" class="remove-skin-btn">Fjern Billede</button>
             </div>
         </div>
+        
+        <div class="volume-container">
+            <div class="volume-row">
+                <label>🎵 Musik:</label>
+                <input type="range" class="bgm-slider" min="0" max="100" value="50">
+            </div>
+            <div class="volume-row">
+                <label>🔊 Effektlyd:</label>
+                <input type="range" class="sfx-slider" min="0" max="100" value="50">
+            </div>
+        </div>
+
         <button id="play-btn">Spil Nu</button>
         
         <div id="level-container">
@@ -256,15 +285,81 @@
         const GROWTH_SPEED = 0.35;      
         const WORLD_SIZE = 10000; 
 
-        for (let i = 0; i < 400; i++) {
-            spaceDust.push({
-                x: Math.random() * WORLD_SIZE,
-                y: Math.random() * WORLD_SIZE,
-                radius: Math.random() * 2 + 1,
-                parallax: Math.random() * 0.8 + 0.2, 
-                color: `hsla(${Math.random() * 360}, 50%, 80%, ${Math.random() * 0.5 + 0.2})`,
-                alpha: Math.random() * 0.5 + 0.3
+        let audioCtx = null;
+        let currentBgmVolume = 0.5; 
+        let currentSfxVolume = 0.5; 
+
+        document.querySelectorAll('.bgm-slider').forEach(el => {
+            el.addEventListener('input', (e) => {
+                currentBgmVolume = e.target.value / 100;
+                document.querySelectorAll('.bgm-slider').forEach(s => s.value = e.target.value);
             });
+        });
+
+        document.querySelectorAll('.sfx-slider').forEach(el => {
+            el.addEventListener('input', (e) => {
+                currentSfxVolume = e.target.value / 100;
+                document.querySelectorAll('.sfx-slider').forEach(s => s.value = e.target.value);
+            });
+        });
+
+        function startBgm() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]; 
+            let noteIdx = 0;
+            setInterval(() => {
+                if (!gameActive || isPaused || currentBgmVolume === 0) return;
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                osc.type = 'square'; 
+                osc.frequency.setValueAtTime(notes[noteIdx] / 2, audioCtx.currentTime); 
+                
+                let vol = 0.05 * currentBgmVolume; 
+                gainNode.gain.setValueAtTime(vol, audioCtx.currentTime); 
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+                noteIdx = (noteIdx + 1) % notes.length;
+            }, 300);
+        }
+
+        function playEatSound() {
+            if (!audioCtx || !gameActive || currentSfxVolume === 0) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+            
+            let vol = 0.1 * currentSfxVolume; 
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playDeathSound() {
+            if (!audioCtx || currentSfxVolume === 0) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.8);
+            
+            let vol = 0.2 * currentSfxVolume;
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.8);
         }
 
         const chatMessages = document.getElementById('chat-messages');
@@ -498,10 +593,7 @@
 
         const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
         const startScreen = document.getElementById('start-screen'); const uiElement = document.getElementById('ui');
-        
-        // NYT: Referer til den rigtige HUD-boks
         const hudRightElement = document.getElementById('hud-right'); 
-        
         const leaderboardList = document.getElementById('leaderboard-list');
         const nicknameInput = document.getElementById('nickname'); const colorSlider = document.getElementById('color-slider');
         const colorPreview = document.getElementById('color-preview'); const skinUploadInput = document.getElementById('skin-upload');
@@ -616,8 +708,26 @@
         function drawStarShape(ctx, x, y, radius, points, inset, rotation) { ctx.beginPath(); for (let i = 0; i < points * 2; i++) { let r = (i % 2 === 0) ? radius : radius * inset; let angle = (i * Math.PI) / points + rotation; ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r); } ctx.closePath(); }
         canvas.width = window.innerWidth; canvas.height = window.innerHeight; let mouse = { x: 0, y: 0 }; let currentZoom = 0.8; let lastTime = performance.now(); let gameActive = false; let playerName = ""; let playerCells = []; let isSprinting = false; let isShooting = false; let lastShootTime = 0; let xpAnimFrame = null; let isMerging = false; let isFrozen = false; let mergeCooldown = 0; 
 
-        // NYT: Her sikrer vi at hudRightElement åbnes sammen med de andre menuer
-        document.getElementById('play-btn').addEventListener('click', () => { playerName = nicknameInput.value || "Gæst"; localStorage.setItem('bobleName', playerName); startScreen.style.display = 'none'; deathMessage.style.display = 'none'; skillsOverlay.style.display = 'none'; uiElement.style.display = 'block'; hudRightElement.style.display = 'flex'; highestScoreThisRun = 0; respawn(); gameActive = true; });
+        document.getElementById('play-btn').addEventListener('click', () => { 
+            playerName = nicknameInput.value || "Gæst"; 
+            localStorage.setItem('bobleName', playerName); 
+            startScreen.style.display = 'none'; 
+            deathMessage.style.display = 'none'; 
+            skillsOverlay.style.display = 'none'; 
+            uiElement.style.display = 'block'; 
+            hudRightElement.style.display = 'flex'; 
+            highestScoreThisRun = 0; 
+            
+            if (!audioCtx) {
+                startBgm();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            respawn(); 
+            gameActive = true; 
+        });
+        
         killBtn.addEventListener('click', () => { if (gameActive && !isQuitting) { isQuitting = true; quitTimer = 15.0; killBtn.style.background = "linear-gradient(135deg, #7f8c8d, #95a5a6)"; killBtn.style.cursor = "default"; } });
 
         window.addEventListener('mousemove', (e) => { mouse.x = e.clientX - canvas.width / 2; mouse.y = e.clientY - canvas.height / 2; }); window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }); 
@@ -760,10 +870,14 @@
             gameActive = false; let xpGained = Math.floor(highestScoreThisRun * 0.02); let startXP = totalXP; totalXP += xpGained; localStorage.setItem('bobleXP', totalXP); 
             isQuitting = false; killBtn.innerText = "💀 Afslut Spil"; killBtn.style.background = "linear-gradient(135deg, #e74c3c, #c0392b)"; killBtn.style.cursor = "pointer"; highscoreDisplay.innerText = "🏆 Highscore: " + bestScore; startScreen.style.display = 'flex'; uiElement.style.display = 'none'; 
             
-            // NYT: Skjuler HUD'en ved Game Over
             hudRightElement.style.display = 'none'; 
             
-            if (wasEaten) deathMessage.style.display = 'block'; cancelAnimationFrame(xpAnimFrame); let currentAnimXP = startXP; let targetXP = totalXP; 
+            if (wasEaten) {
+                deathMessage.style.display = 'block'; 
+                playDeathSound();
+            }
+            
+            cancelAnimationFrame(xpAnimFrame); let currentAnimXP = startXP; let targetXP = totalXP; 
             function animateBar() { 
                 if (currentAnimXP < targetXP) { 
                     let step = Math.ceil((targetXP - currentAnimXP) * 0.01); if (step < 1) step = 1; currentAnimXP += step; if (currentAnimXP > targetXP) currentAnimXP = targetXP; renderXP(currentAnimXP); 
@@ -1090,6 +1204,7 @@
                                 enemy.cells.splice(eIndex, 1); 
                                 
                                 screenShake = 8;
+                                playEatSound();
                             } 
                         } 
                     }
@@ -1103,6 +1218,7 @@
                             delete bots[id]; 
                             
                             screenShake = 8;
+                            playEatSound();
                         } 
                     }
                 }
@@ -1176,6 +1292,8 @@
                             let gain = (food.radius ** 2 * GROWTH_SPEED) * Math.max(0.025, 15 / cell.radius) * 4 * foodUpgradeMultiplier;
                             cell.radius = Math.sqrt(cell.radius ** 2 + gain); 
                             socket.emit('foodEaten', food.id); foods.splice(i, 1); 
+                            
+                            playEatSound();
                         } 
                     }); 
                 } 
@@ -1196,6 +1314,8 @@
                             else gain = (em.radius ** 2) * (em.massMultiplier || 1) * GROWTH_SPEED * foodUpgradeMultiplier;
                             cell.radius = Math.sqrt(cell.radius ** 2 + gain);
                             cell.wobble = Math.min(0.2, (cell.wobble || 0) + 0.1); socket.emit('eatEjectedMass', em.id); ejectedMass.splice(i, 1); 
+                            
+                            playEatSound();
                         } 
                     }); 
                 } 

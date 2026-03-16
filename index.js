@@ -689,7 +689,6 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-  console.log(`Server kører på port ${PORT}`);
+http.listen(3000, () => {
+  console.log('Multiplayer-server kører med Kill-Feed og Leaderboard-farver!');
 });
