@@ -48,7 +48,6 @@ function spawnBot(id) {
         if (availableNames.length === 0) availableNames = ELITE_NAMES; 
         bName = availableNames[Math.floor(Math.random() * availableNames.length)];
     } else {
-        // ÆNDRET: Nu er der kun 10% chance (1 ud af 10) for at en bot er en Kamikaze-bot!
         bType = Math.random() < 0.10 ? 'dumb' : 'normal';
         startRadius = 25 + Math.random() * 175;
     }
@@ -586,6 +585,33 @@ io.on('connection', (socket) => {
   socket.emit('currentPlayers', players); socket.emit('currentFood', foods); socket.emit('currentBots', bots); socket.emit('virusesUpdate', viruses); socket.emit('ejectedMassUpdate', ejectedMass); socket.emit('feedersUpdate', feeders); 
 
   socket.on('joinGame', (playerData) => {
+      // NYT: HVIS DER ER 0 SPILLERE (du er den første), NULSTILLES ALT PÅ KORTET FOR EN FRISK START!
+      if (Object.keys(players).length === 0) {
+          bots = {};
+          pendingBotRespawns = [];
+          for(let i = 0; i < 30; i++) {
+              let id = 'bot_' + Math.random().toString(36).substr(2, 5);
+              bots[id] = spawnBot(id);
+          }
+          
+          foods = [];
+          for(let i = 0; i < 1500; i++) {
+              foods.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, hue: Math.floor(Math.random() * 360), radius: 6 });
+          }
+
+          viruses = [];
+          for(let i = 0; i < 4; i++) {
+              viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+          }
+          
+          ejectedMass = [];
+
+          io.emit('currentBots', bots);
+          io.emit('currentFood', foods);
+          io.emit('virusesUpdate', viruses);
+          io.emit('ejectedMassUpdate', ejectedMass);
+      }
+
       players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false }; 
       socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
   });
