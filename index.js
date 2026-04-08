@@ -13,6 +13,7 @@ let viruses = [];
 let ejectedMass = []; 
 let feeders = []; 
 let feederSpawnTimer = 0; 
+let pendingBotRespawns = []; 
 const MAX_FEEDERS = 1; 
 
 const WORLD_SIZE = 10000; 
@@ -20,7 +21,7 @@ const WORLD_SIZE = 10000;
 const BOT_NAMES = ["Apollo", "Zeus", "Athena", "Ares", "Thor", "Odin", "Loki", "Freya", "Hades", "Anubis", "Dumle", "Tulle"];
 const ELITE_NAMES = ["🔴 Killer Boy", "🔴 Killer Girl", "🔴 Bloodhunter", "🔴 Soul Eater", "🔴 Skullcrusher", "🔴 Nightmare", "🔴 Doom", "🔴 Widowmaker"];
 
-for(let i = 0; i < 800; i++) {
+for(let i = 0; i < 1500; i++) {
     foods.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, hue: Math.floor(Math.random() * 360), radius: 6 });
 }
 
@@ -33,11 +34,11 @@ function spawnBot(id) {
     
     let bType = 'normal';
     let bName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-    let startRadius = 25 + Math.random() * 30; 
+    let startRadius = 25; 
     
     if (eliteCount < 2) {
         bType = 'elite';
-        startRadius = 80 + Math.random() * 40; 
+        startRadius = 100 + Math.random() * 175; 
         
         let usedNames = [];
         for (let k in bots) {
@@ -47,18 +48,45 @@ function spawnBot(id) {
         if (availableNames.length === 0) availableNames = ELITE_NAMES; 
         bName = availableNames[Math.floor(Math.random() * availableNames.length)];
     } else {
-        bType = Math.random() < 0.3 ? 'dumb' : 'normal';
+        // ÆNDRET: Nu er der kun 10% chance (1 ud af 10) for at en bot er en Kamikaze-bot!
+        bType = Math.random() < 0.10 ? 'dumb' : 'normal';
+        startRadius = 25 + Math.random() * 175;
+    }
+
+    let safe = false;
+    let spawnX = Math.random() * WORLD_SIZE;
+    let spawnY = Math.random() * WORLD_SIZE;
+    let attempts = 0;
+    
+    while (!safe && attempts < 20) {
+        safe = true;
+        spawnX = Math.random() * WORLD_SIZE;
+        spawnY = Math.random() * WORLD_SIZE;
+        
+        for (let pId in players) {
+            let p = players[pId];
+            if (p.cells && !p.isInvincible && !p.godMode) {
+                for (let c of p.cells) {
+                    if (Math.hypot(c.x - spawnX, c.y - spawnY) < c.radius + 600) { 
+                        safe = false; 
+                        break; 
+                    }
+                }
+            }
+            if (!safe) break;
+        }
+        attempts++;
     }
 
     return { 
-        id: id, groupId: id, x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, 
+        id: id, groupId: id, x: spawnX, y: spawnY, 
         radius: startRadius, hue: Math.floor(Math.random() * 360), 
-        name: bName, targetX: Math.random() * WORLD_SIZE, targetY: Math.random() * WORLD_SIZE, 
+        name: bName, targetX: spawnX, targetY: spawnY, 
         vx: 0, vy: 0, isSprinting: false, sprintBurst: 0, behavior: bType, mergeCooldown: 0 
     };
 }
 
-for(let i = 0; i < 15; i++) {
+for(let i = 0; i < 30; i++) {
     let id = 'bot_' + Math.random().toString(36).substr(2, 5);
     bots[id] = spawnBot(id);
 }
@@ -68,7 +96,7 @@ for(let i = 0; i < 4; i++) {
 }
 
 function spawnFeeder() {
-    feeders.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 80, foodToDrop: 300, dropTimer: 0 });
+    feeders.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 80, foodToDrop: 100, dropTimer: 0 });
     io.emit('feederSpawned'); 
 }
 for (let i = 0; i < MAX_FEEDERS; i++) spawnFeeder();
@@ -89,15 +117,15 @@ setInterval(() => {
         let f = feeders[i];
         f.dropTimer -= deltaTime;
         if (f.dropTimer <= 0 && f.foodToDrop > 0) {
-            let dropAmount = Math.min(3, f.foodToDrop);
+            let dropAmount = Math.min(1, f.foodToDrop);
             for (let j = 0; j < dropAmount; j++) {
                 let angle = Math.random() * Math.PI * 2;
                 let speed = 10 + Math.random() * 20;
                 ejectedMass.push({ id: Math.random(), x: f.x + Math.cos(angle) * (f.radius - 10), y: f.y + Math.sin(angle) * (f.radius - 10), radius: 14, hue: 50, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, sender: 'star', massMultiplier: 0.75 });
             }
-            f.foodToDrop -= dropAmount; f.dropTimer = 0.4;
+            f.foodToDrop -= dropAmount; f.dropTimer = 0.8;
         }
-        if (f.foodToDrop <= 0) { feeders.splice(i, 1); feederSpawnTimer = 15 + Math.random() * 35; }
+        if (f.foodToDrop <= 0) { feeders.splice(i, 1); feederSpawnTimer = 60 + Math.random() * 60; }
     }
 
     for (let i = viruses.length - 1; i >= 0; i--) {
@@ -127,7 +155,7 @@ setInterval(() => {
             let virus = viruses[v];
             if (Math.hypot(virus.x - em.x, virus.y - em.y) < virus.radius) {
                 if (em.isSprintDrop) {
-                    virus.radius += 0.5;
+                    virus.radius += 0.5 * (em.massMultiplier || 1);
                 } else {
                     virus.eaten = (virus.eaten || 0) + 1; virus.radius += 3; 
                     virus.lifeTimer = 60; 
@@ -151,7 +179,7 @@ setInterval(() => {
             if (Math.hypot(bot.x - em.x, bot.y - em.y) < bot.radius) {
                 let eliteBonus = bot.behavior === 'elite' ? 1.5 : 1.0;
                 if (em.isSprintDrop) {
-                    bot.radius = Math.sqrt(bot.radius**2 + ((6**2) * 0.060 * 2 * eliteBonus)); 
+                    bot.radius = Math.sqrt(bot.radius**2 + ((6**2) * 0.060 * 2 * eliteBonus * (em.massMultiplier || 1))); 
                 } else {
                     bot.radius = Math.sqrt(bot.radius**2 + (em.radius**2 * (em.massMultiplier || 1) * 0.35 * eliteBonus)); 
                 }
@@ -257,9 +285,8 @@ setInterval(() => {
 
             if (bot.behavior === 'dumb') {
                 if (closestThreat) {
-                    let escX = bot.x - closestThreat.x; let escY = bot.y - closestThreat.y;
-                    if (escX === 0 && escY === 0) { escX = 10; escY = 10; } 
-                    bot.targetX = bot.x + escX; bot.targetY = bot.y + escY; 
+                    bot.targetX = closestThreat.x; 
+                    bot.targetY = closestThreat.y; 
                 } else if (bestFood) {
                     bot.targetX = bestFood.x; bot.targetY = bestFood.y;
                 } else {
@@ -376,7 +403,7 @@ setInterval(() => {
                     
                     ejectedMass.push({
                         id: Math.random(), x: bot.x + backX * spawnDist, y: bot.y + backY * spawnDist,
-                        vx: backX * 8, vy: backY * 8, radius: dropRadius, hue: bot.hue, isSprintDrop: true
+                        vx: backX * 8, vy: backY * 8, radius: dropRadius, hue: bot.hue, isSprintDrop: true, massMultiplier: 1
                     });
                 } else {
                     bot.isSprinting = false; bot.sprintBurst = 0;
@@ -515,7 +542,7 @@ setInterval(() => {
     }
     
     let playerCount = Object.keys(players).length;
-    let targetBotCount = Math.max(2, 15 - playerCount); 
+    let targetBotCount = Math.max(2, 30 - playerCount); 
     
     let botGroups = new Set();
     let normalBotGroups = new Set();
@@ -526,11 +553,21 @@ setInterval(() => {
         }
     }
     
-    if (botGroups.size < targetBotCount && Math.random() < 0.05) {
-        let newId = 'bot_' + Math.random().toString(36).substr(2, 5);
-        bots[newId] = spawnBot(newId);
-    } 
-    else if (botGroups.size > targetBotCount && normalBotGroups.size > 0 && Math.random() < 0.02) {
+    let groupsNeeded = targetBotCount - (botGroups.size + pendingBotRespawns.length);
+    for(let i = 0; i < groupsNeeded; i++) {
+        pendingBotRespawns.push(30.0); 
+    }
+
+    for (let i = pendingBotRespawns.length - 1; i >= 0; i--) {
+        pendingBotRespawns[i] -= deltaTime;
+        if (pendingBotRespawns[i] <= 0) {
+            pendingBotRespawns.splice(i, 1);
+            let newId = 'bot_' + Math.random().toString(36).substr(2, 5);
+            bots[newId] = spawnBot(newId);
+        }
+    }
+    
+    if (botGroups.size > targetBotCount && normalBotGroups.size > 0 && Math.random() < 0.02) {
         let groupToRemove = Array.from(normalBotGroups)[0];
         for (let id in bots) {
             if (bots[id].groupId === groupToRemove) {
@@ -542,6 +579,7 @@ setInterval(() => {
     io.emit('virusesUpdate', viruses); io.emit('botsUpdate', bots); io.emit('ejectedMassUpdate', ejectedMass); io.emit('feedersUpdate', feeders); 
 }, 1000 / 30); 
 
+const PORT = process.env.PORT || 3000;
 io.on('connection', (socket) => {
   alliances[socket.id] = []; 
 
@@ -689,6 +727,6 @@ io.on('connection', (socket) => {
   });
 });
 
-http.listen(3000, () => {
-  console.log('Multiplayer-server kører med Kill-Feed og Leaderboard-farver!');
+http.listen(PORT, () => {
+  console.log(`Server kører på port ${PORT}`);
 });
