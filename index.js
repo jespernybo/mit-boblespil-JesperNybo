@@ -16,10 +16,22 @@ let feederSpawnTimer = 0;
 let pendingBotRespawns = []; 
 const MAX_FEEDERS = 1; 
 
+const deadEntities = new Set();
 const WORLD_SIZE = 10000; 
 
 const BOT_NAMES = ["Apollo", "Zeus", "Athena", "Ares", "Thor", "Odin", "Loki", "Freya", "Hades", "Anubis", "Dumle", "Tulle"];
 const ELITE_NAMES = ["🔴 Killer Boy", "🔴 Killer Girl", "🔴 Bloodhunter", "🔴 Soul Eater", "🔴 Skullcrusher", "🔴 Nightmare", "🔴 Doom", "🔴 Widowmaker"];
+
+function isCloseEnough(playerCells, targetX, targetY, targetRadius) {
+    if (!playerCells || playerCells.length === 0) return false;
+    for (let cell of playerCells) {
+        let dist = Math.hypot(cell.x - targetX, cell.y - targetY);
+        if (dist < cell.radius + targetRadius + 350) {
+            return true;
+        }
+    }
+    return false;
+}
 
 for(let i = 0; i < 1500; i++) {
     foods.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, hue: Math.floor(Math.random() * 360), radius: 6 });
@@ -102,6 +114,27 @@ for (let i = 0; i < MAX_FEEDERS; i++) spawnFeeder();
 
 setInterval(() => {
     let deltaTime = 1 / 30; 
+    let now = Date.now();
+
+    for (let pId in players) {
+        let p = players[pId];
+        if (p.lastHeartbeat && now - p.lastHeartbeat > 5000) {
+            io.to(pId).emit('forceDisconnect'); 
+            io.emit('killFeedMsg', { killer: "Server", victim: p.name + " (Mistede net)" });
+            io.emit('playerDied', pId);
+            
+            if (alliances[pId]) {
+                alliances[pId].forEach(allyId => {
+                    if (alliances[allyId]) {
+                        alliances[allyId] = alliances[allyId].filter(id => id !== pId);
+                        io.to(allyId).emit('allianceBroken', pId);
+                    }
+                });
+            }
+            delete alliances[pId];
+            delete players[pId];
+        }
+    }
 
     if (ejectedMass.length > 150) {
         ejectedMass.splice(0, ejectedMass.length - 150);
@@ -585,7 +618,6 @@ io.on('connection', (socket) => {
   socket.emit('currentPlayers', players); socket.emit('currentFood', foods); socket.emit('currentBots', bots); socket.emit('virusesUpdate', viruses); socket.emit('ejectedMassUpdate', ejectedMass); socket.emit('feedersUpdate', feeders); 
 
   socket.on('joinGame', (playerData) => {
-      // NYT: HVIS DER ER 0 SPILLERE (du er den første), NULSTILLES ALT PÅ KORTET FOR EN FRISK START!
       if (Object.keys(players).length === 0) {
           bots = {};
           pendingBotRespawns = [];
@@ -612,8 +644,14 @@ io.on('connection', (socket) => {
           io.emit('ejectedMassUpdate', ejectedMass);
       }
 
-      players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false }; 
+      players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false, lastHeartbeat: Date.now() }; 
       socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
+  });
+
+  socket.on('heartbeat', () => {
+      if (players[socket.id]) {
+          players[socket.id].lastHeartbeat = Date.now();
+      }
   });
 
   socket.on('playerMovement', (movementData) => {
@@ -623,7 +661,7 @@ io.on('connection', (socket) => {
       players[socket.id].level = movementData.level; 
       players[socket.id].isInvincible = movementData.isInvincible; 
       players[socket.id].godMode = movementData.godMode; 
-      socket.broadcast.emit('playerMoved', { id: socket.id, cells: movementData.cells, isSprinting: movementData.isSprinting, level: movementData.level, isInvincible: movementData.isInvincible, godMode: movementData.godMode });
+      socket.broadcast.emit('playerMoved', { id: socket.id, cells: movementData.cells, isSSprintning: movementData.isSprinting, level: movementData.level, isInvincible: movementData.isInvincible, godMode: movementData.godMode });
     }
   });
 
@@ -637,6 +675,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('shootMass', (massData) => {
+      let p = players[socket.id];
+      if (p) {
+          let now = Date.now();
+          p.shootTimestamps = p.shootTimestamps || [];
+          p.shootTimestamps.push(now);
+          p.shootTimestamps = p.shootTimestamps.filter(t => now - t < 1000);
+          
+          if (p.shootTimestamps.length > 250) {
+              console.log("Kicked player for spamming shootMass: " + p.name);
+              // NYT: Sender besked til chatten!
+              io.emit('chatMessage', { name: "🛡️ Server Admin", text: `${p.name} blev kicket. Grund: Spam/Auto-clicker.` });
+              socket.disconnect();
+              return;
+          }
+      }
+
       const newMass = { id: massData.id || Math.random(), x: massData.x, y: massData.y, vx: massData.vx, vy: massData.vy, radius: massData.radius, hue: massData.hue, massMultiplier: massData.massMultiplier || 1, isSprintDrop: massData.isSprintDrop || false }; 
       ejectedMass.push(newMass);
   });
@@ -646,7 +700,17 @@ io.on('connection', (socket) => {
   });
 
   socket.on('eatEjectedMass', (massId) => {
-      const index = ejectedMass.findIndex(m => m.id === massId); if (index !== -1) { ejectedMass.splice(index, 1); io.emit('ejectedMassEaten', massId); }
+      const index = ejectedMass.findIndex(m => m.id === massId); 
+      if (index !== -1) {
+          let mass = ejectedMass[index];
+          let p = players[socket.id];
+          if (p && !isCloseEnough(p.cells, mass.x, mass.y, mass.radius)) {
+              return; 
+          }
+
+          ejectedMass.splice(index, 1); 
+          io.emit('ejectedMassEaten', massId); 
+      }
   });
 
   socket.on('virusPopped', (virusId) => {
@@ -662,19 +726,23 @@ io.on('connection', (socket) => {
       const { victimId, cellId } = data;
       
       if (players[socket.id] && players[socket.id].isInvincible && !players[socket.id].godMode) return; 
-      
       if (players[victimId] && players[victimId].isInvincible) return; 
       if (players[victimId] && players[victimId].godMode) return; 
-
       if (alliances[socket.id] && alliances[socket.id].includes(victimId)) return;
 
       if (players[socket.id] && players[victimId] && players[victimId].cells) {
           const cIndex = players[victimId].cells.findIndex(c => c.cellId === cellId);
           if (cIndex !== -1) {
               const cell = players[victimId].cells[cIndex];
-              io.emit('slimeSplat', { x: cell.x, y: cell.y, hue: players[victimId].hue, radius: cell.radius });
               
-              players[victimId].cells.splice(cIndex, 1); io.emit('cellEaten', { victimId: victimId, cellId: cellId });
+              let p = players[socket.id];
+              if (!isCloseEnough(p.cells, cell.x, cell.y, cell.radius)) {
+                  return; 
+              }
+
+              io.emit('slimeSplat', { x: cell.x, y: cell.y, hue: players[victimId].hue, radius: cell.radius });
+              players[victimId].cells.splice(cIndex, 1); 
+              io.emit('cellEaten', { victimId: victimId, cellId: cellId });
               
               if (players[victimId].cells.length === 0) { 
                   io.emit('killFeedMsg', { killer: players[socket.id].name, victim: players[victimId].name });
@@ -687,11 +755,20 @@ io.on('connection', (socket) => {
 
   socket.on('ateBot', (botId) => {
       if (players[socket.id] && players[socket.id].isInvincible && !players[socket.id].godMode) return; 
+      if (deadEntities.has(botId)) return;
+
       if (players[socket.id] && bots[botId]) { 
+          let p = players[socket.id];
+          let bot = bots[botId];
+          if (!isCloseEnough(p.cells, bot.x, bot.y, bot.radius)) {
+              return; 
+          }
+
+          deadEntities.add(botId);
+          setTimeout(() => deadEntities.delete(botId), 600000);
+
           io.emit('slimeSplat', { x: bots[botId].x, y: bots[botId].y, hue: bots[botId].hue, radius: bots[botId].radius });
-          
           io.emit('killFeedMsg', { killer: players[socket.id].name, victim: bots[botId].name });
-          
           delete bots[botId]; 
       }
   });
