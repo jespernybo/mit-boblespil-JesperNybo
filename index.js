@@ -19,8 +19,22 @@ const MAX_FEEDERS = 1;
 const deadEntities = new Set();
 const WORLD_SIZE = 10000; 
 
-const BOT_NAMES = ["Apollo", "Zeus", "Athena", "Ares", "Thor", "Odin", "Loki", "Freya", "Hades", "Anubis", "Dumle", "Tulle"];
-const ELITE_NAMES = ["🔴 Killer Boy", "🔴 Killer Girl", "🔴 Bloodhunter", "🔴 Soul Eater", "🔴 Skullcrusher", "🔴 Nightmare", "🔴 Doom", "🔴 Widowmaker"];
+const BOT_NAMES = [
+    "Dumle", "Tulle", "Kebab Kongen", "Luffe", "Mester", "HyggeSokken", "Børge", "Viktor", "Lars Tyndskid", 
+    "RundeRuth", "Svenne", "NinjaNiels", "PølseMix", "Danskeren", "Ost", "GamerGurl", "Faxe Kondi", 
+    "Snøffel", "Kaj", "Andrea", "Bims", "FlotteFyr", "StoreBastian", "Smørrebrød", "Frikadelle", 
+    "Karsten", "KageMonster", "SkørPingvin", "LilleLise", "Basse", "Mulle", "Guffe", "Klatten", "Bubbi", 
+    "Gismo", "Sofus", "Sigurd", "Magnus", "HurtigKarl", "Kaptajn", "Jens", "Preben", "Troldmanden", 
+    "Skyggen", "Boblen", "Hoptimist", "Kartoffel", "Leverpostej", "GuldDreng", "SuperMads", 
+    "NoobSlayer", "Pirat", "Røver", "Slikmund", "Tykke", "Køteren", "KæmpeKaj", "Gnavpot", "Spiller123",
+    "GamerMusen", "Pølsevognen", "BølleBob", "KaptajnKold", "SvedigeSven", "TacoTorsdag"
+];
+
+const ELITE_NAMES = [
+    "🔴 Bossen", "🔴 SvedigGamer", "🔴 EliteDansker", "🔴 DødsMaskinen", "🔴 Toxic", 
+    "🔴 Tryhard", "🔴 Maskinen", "🔴 Kødøksen", "🔴 Terminator", "🔴 Kongen", 
+    "🔴 Bæstet", "🔴 Ninjaen", "🔴 Unstoppable", "🔴 ProGamer", "🔴 Hackeren"
+];
 
 function isCloseEnough(playerCells, targetX, targetY, targetRadius) {
     if (!playerCells || playerCells.length === 0) return false;
@@ -39,29 +53,34 @@ for(let i = 0; i < 1500; i++) {
 
 function spawnBot(id) {
     let eliteGroups = new Set();
+    let usedNames = [];
+    
     for (let k in bots) {
-        if (bots[k].behavior === 'elite') eliteGroups.add(bots[k].groupId);
+        usedNames.push(bots[k].name);
+        if (bots[k].behavior === 'elite') {
+            eliteGroups.add(bots[k].groupId);
+        }
     }
     let eliteCount = eliteGroups.size;
     
     let bType = 'normal';
-    let bName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+    let bName = '';
     let startRadius = 25; 
     
     if (eliteCount < 2) {
         bType = 'elite';
         startRadius = 100 + Math.random() * 175; 
         
-        let usedNames = [];
-        for (let k in bots) {
-            if (bots[k].behavior === 'elite') usedNames.push(bots[k].name);
-        }
         let availableNames = ELITE_NAMES.filter(name => !usedNames.includes(name));
         if (availableNames.length === 0) availableNames = ELITE_NAMES; 
         bName = availableNames[Math.floor(Math.random() * availableNames.length)];
     } else {
         bType = Math.random() < 0.10 ? 'dumb' : 'normal';
         startRadius = 25 + Math.random() * 175;
+
+        let availableNames = BOT_NAMES.filter(name => !usedNames.includes(name));
+        if (availableNames.length === 0) availableNames = BOT_NAMES; 
+        bName = availableNames[Math.floor(Math.random() * availableNames.length)];
     }
 
     let safe = false;
@@ -644,7 +663,7 @@ io.on('connection', (socket) => {
           io.emit('ejectedMassUpdate', ejectedMass);
       }
 
-      players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false, lastHeartbeat: Date.now() }; 
+      players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false, lastHeartbeat: Date.now(), score: 500 }; 
       socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
   });
 
@@ -661,7 +680,9 @@ io.on('connection', (socket) => {
       players[socket.id].level = movementData.level; 
       players[socket.id].isInvincible = movementData.isInvincible; 
       players[socket.id].godMode = movementData.godMode; 
-      socket.broadcast.emit('playerMoved', { id: socket.id, cells: movementData.cells, isSSprintning: movementData.isSprinting, level: movementData.level, isInvincible: movementData.isInvincible, godMode: movementData.godMode });
+      // NYT: Gemmer spillerens score på serveren og sender den ud til andre
+      players[socket.id].score = movementData.score;
+      socket.broadcast.emit('playerMoved', { id: socket.id, cells: movementData.cells, isSprinting: movementData.isSprinting, level: movementData.level, isInvincible: movementData.isInvincible, godMode: movementData.godMode, score: movementData.score });
     }
   });
 
@@ -684,7 +705,6 @@ io.on('connection', (socket) => {
           
           if (p.shootTimestamps.length > 250) {
               console.log("Kicked player for spamming shootMass: " + p.name);
-              // NYT: Sender besked til chatten!
               io.emit('chatMessage', { name: "🛡️ Server Admin", text: `${p.name} blev kicket. Grund: Spam/Auto-clicker.` });
               socket.disconnect();
               return;
@@ -774,7 +794,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('suicide', () => {
-      if (players[socket.id]) { io.emit('playerDied', socket.id); delete players[socket.id]; }
+      let p = players[socket.id];
+      if (p && p.cells && p.cells.length > 0) { 
+          let totalArea = 0;
+          p.cells.forEach(c => totalArea += c.radius * c.radius);
+          let r = Math.sqrt(totalArea);
+          let score = Math.floor(500 + (r - 30) * 100); 
+          if (score < 10) score = 10;
+          
+          let earnedCoins = Math.max(0, Math.floor(score / 1000));
+          
+          socket.emit('coinsEarned', { coins: earnedCoins, score: score });
+          
+          io.emit('playerDied', socket.id); 
+          delete players[socket.id]; 
+      }
   });
 
   socket.on('sendMessage', (msgData) => {
