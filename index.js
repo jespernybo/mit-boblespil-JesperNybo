@@ -12,7 +12,7 @@ let bots = {};
 let viruses = []; 
 let ejectedMass = []; 
 let feeders = []; 
-let powerups = []; // NYT: Array til power-ups
+let powerups = []; 
 let feederSpawnTimer = 0; 
 let pendingBotRespawns = []; 
 const MAX_FEEDERS = 1; 
@@ -41,14 +41,14 @@ function isCloseEnough(playerCells, targetX, targetY, targetRadius) {
     if (!playerCells || playerCells.length === 0) return false;
     for (let cell of playerCells) {
         let dist = Math.hypot(cell.x - targetX, cell.y - targetY);
-        if (dist < cell.radius + targetRadius + 350) {
+        // Tillad lidt ekstra afstand pga. portal-systemet (hvis de er tæt på kanten)
+        if (dist < cell.radius + targetRadius + 350 || Math.abs(dist - WORLD_SIZE) < cell.radius + targetRadius + 350) {
             return true;
         }
     }
     return false;
 }
 
-// NYT: Power-up spawner
 setInterval(() => {
     if (powerups.length < 15) {
         powerups.push({
@@ -205,15 +205,20 @@ setInterval(() => {
 
         if (Math.abs(v.vx) > 0.1 || Math.abs(v.vy) > 0.1) {
             v.x += v.vx; v.y += v.vy; v.vx *= 0.92; v.vy *= 0.92;
-            v.x = Math.max(v.radius, Math.min(WORLD_SIZE - v.radius, v.x)); v.y = Math.max(v.radius, Math.min(WORLD_SIZE - v.radius, v.y));
+            
+            // PORTAL LOGIK FOR VIRUS
+            if (v.x < 0) v.x += WORLD_SIZE; else if (v.x > WORLD_SIZE) v.x -= WORLD_SIZE;
+            if (v.y < 0) v.y += WORLD_SIZE; else if (v.y > WORLD_SIZE) v.y -= WORLD_SIZE;
         } else { v.vx = 0; v.vy = 0; }
     }
 
     for (let i = ejectedMass.length - 1; i >= 0; i--) {
         let em = ejectedMass[i];
         em.x += em.vx; em.y += em.vy; em.vx *= 0.9; em.vy *= 0.9;
-        em.x = Math.max(em.radius, Math.min(WORLD_SIZE - em.radius, em.x)); 
-        em.y = Math.max(em.radius, Math.min(WORLD_SIZE - em.radius, em.y));
+        
+        // PORTAL LOGIK FOR MASSE
+        if (em.x < 0) em.x += WORLD_SIZE; else if (em.x > WORLD_SIZE) em.x -= WORLD_SIZE;
+        if (em.y < 0) em.y += WORLD_SIZE; else if (em.y > WORLD_SIZE) em.y -= WORLD_SIZE;
 
         let emEaten = false;
 
@@ -481,7 +486,10 @@ setInterval(() => {
 
         bot.vx = (dx / dist) * baseSpeed; bot.vy = (dy / dist) * baseSpeed;
         bot.x += bot.vx; bot.y += bot.vy;
-        bot.x = Math.max(bot.radius, Math.min(WORLD_SIZE - bot.radius, bot.x)); bot.y = Math.max(bot.radius, Math.min(WORLD_SIZE - bot.radius, bot.y));
+        
+        // PORTAL LOGIK FOR BOTS
+        if (bot.x < 0) bot.x += WORLD_SIZE; else if (bot.x > WORLD_SIZE) bot.x -= WORLD_SIZE;
+        if (bot.y < 0) bot.y += WORLD_SIZE; else if (bot.y > WORLD_SIZE) bot.y -= WORLD_SIZE;
 
         for (let i = foods.length - 1; i >= 0; i--) {
             if (Math.hypot(bot.x - foods[i].x, bot.y - foods[i].y) < bot.radius) {
@@ -658,7 +666,7 @@ io.on('connection', (socket) => {
   socket.emit('virusesUpdate', viruses); 
   socket.emit('ejectedMassUpdate', ejectedMass); 
   socket.emit('feedersUpdate', feeders); 
-  socket.emit('powerupsUpdate', powerups); // NYT
+  socket.emit('powerupsUpdate', powerups);
 
   socket.on('joinGame', (playerData) => {
       if (Object.keys(players).length === 0) {
@@ -680,7 +688,7 @@ io.on('connection', (socket) => {
           }
           
           ejectedMass = [];
-          powerups = []; // Nulstil power-ups
+          powerups = [];
 
           io.emit('currentBots', bots);
           io.emit('currentFood', foods);
@@ -720,7 +728,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // NYT: Spiser en power-up
   socket.on('atePowerup', (id) => {
       let idx = powerups.findIndex(p => p.id === id);
       if (idx !== -1) {

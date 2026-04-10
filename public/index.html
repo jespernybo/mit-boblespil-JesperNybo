@@ -114,6 +114,7 @@
         .controls { font-size: 14px; margin-top: 10px; color: #bdc3c7; line-height: 1.6; }
         #cooldown-container { margin-top: 10px; padding-top: 10px; border-top: 1px solid #34495e; font-size: 16px; }
 
+        /* Chat CSS */
         #chat-container { position: absolute; bottom: 20px; left: 20px; width: 320px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
         #chat-messages { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; pointer-events: auto; }
         .chat-msg { color: white; background: rgba(26, 26, 46, 0.7); border: 1px solid #34495e; padding: 6px 10px; border-radius: 8px; font-size: 14px; text-shadow: 1px 1px 2px black; width: fit-content; max-width: 100%; word-wrap: break-word; transition: opacity 1s; }
@@ -121,6 +122,7 @@
         #chat-input { display: none; pointer-events: auto; padding: 12px; border-radius: 8px; border: 2px solid #3498db; background: rgba(26, 26, 46, 0.95); color: white; font-size: 15px; outline: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         #chat-input::placeholder { color: #7f8c8d; }
 
+        /* Pause & Alliance Menu CSS */
         #pause-menu { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); z-index: 500; flex-direction: column; justify-content: center; align-items: center; color: white; }
         #pause-menu h2 { font-size: 50px; margin-bottom: 20px; color: #f1c40f; text-shadow: 0 0 10px rgba(241, 196, 15, 0.5); }
         #player-list-container { background: rgba(0,0,0,0.4); border: 2px solid #3498db; border-radius: 15px; width: 350px; max-height: 400px; overflow-y: auto; padding: 15px; }
@@ -302,7 +304,7 @@
         const socket = io();
         let otherPlayers = {}; let foods = []; let bots = {}; let viruses = []; let ejectedMass = []; 
         let feeders = []; let minimapBlinkTimer = 0; let soundWaves = [];
-        let spaceDust = []; let slimeParticles = []; let trailParticles = []; // NYT: Fartspor
+        let spaceDust = []; let slimeParticles = []; let trailParticles = [];
         let shockwaves = []; 
         let powerups = []; 
         let speedBoostTimer = 0; 
@@ -825,58 +827,17 @@
         colorSlider.addEventListener('input', () => { if (playerSkinImage) removeCustomSkin(); updateColorPreview(); }); skinUploadInput.addEventListener('change', function(event) { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = function(e) { const img = new Image(); img.onload = function() { const tempCanvas = document.createElement('canvas'); tempCanvas.width = 150; tempCanvas.height = 150; tempCanvas.getContext('2d').drawImage(img, 0, 0, 150, 150); playerSkinBase64 = tempCanvas.toDataURL('image/png'); localStorage.setItem('bobleSkin', playerSkinBase64); playerSkinImage = new Image(); playerSkinImage.onload = () => { removeSkinBtn.style.display = 'inline-block'; updateColorPreview(); }; playerSkinImage.src = playerSkinBase64; }; img.src = e.target.result; }; reader.readAsDataURL(file); } });
         function removeCustomSkin() { playerSkinImage = null; playerSkinBase64 = null; skinUploadInput.value = ""; removeSkinBtn.style.display = 'none'; localStorage.removeItem('bobleSkin'); updateColorPreview(); } removeSkinBtn.addEventListener('click', removeCustomSkin); updateColorPreview(); 
 
-        let lastLevel = 1;
-
         function renderXP(xpAmount) { 
             myCurrentLevel = Math.floor(Math.sqrt(xpAmount / 100)) + 1; 
             if (myCurrentLevel > 90) myCurrentLevel = 90; 
-
-            if (myCurrentLevel > lastLevel && gameActive) {
-                if (playerCells.length > 0) {
-                    let avgX = playerCells.reduce((s, c) => s + c.x, 0) / playerCells.length;
-                    let avgY = playerCells.reduce((s, c) => s + c.y, 0) / playerCells.length;
-                    
-                    shockwaves.push({ 
-                        x: avgX, 
-                        y: avgY, 
-                        radius: 50, 
-                        maxRadius: 600, 
-                        alpha: 1, 
-                        color: 50,
-                        text: "⭐ LEVEL UP: " + myCurrentLevel + " ⭐" 
-                    });
-                    screenShake = 30; 
-                    playEatSpecialSound(); 
-                }
-            }
-            lastLevel = myCurrentLevel;
-
             if(document.getElementById('level-text')) {
                 document.getElementById('level-text').innerText = "⭐ Level: " + myCurrentLevel; 
-                let currentLevelBaseXP = Math.pow(myCurrentLevel - 1, 2) * 100; 
-                let nextLevelBaseXP = Math.pow(myCurrentLevel, 2) * 100; 
-                let progressPercent = ((xpAmount - currentLevelBaseXP) / (nextLevelBaseXP - currentLevelBaseXP)) * 100; 
-                document.getElementById('xp-bar-fill').style.width = progressPercent + "%"; 
-                document.getElementById('xp-text').innerText = Math.floor(xpAmount) + " / " + nextLevelBaseXP + " XP"; 
+                let currentLevelBaseXP = Math.pow(myCurrentLevel - 1, 2) * 100; let nextLevelBaseXP = Math.pow(myCurrentLevel, 2) * 100; let progressPercent = ((xpAmount - currentLevelBaseXP) / (nextLevelBaseXP - currentLevelBaseXP)) * 100; document.getElementById('xp-bar-fill').style.width = progressPercent + "%"; document.getElementById('xp-text').innerText = Math.floor(xpAmount) + " / " + nextLevelBaseXP + " XP"; 
             }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
             renderXP(totalXP); checkUpgrades();
-            
-            // NYT: Initialiser de Magiske Ildfluer (Space Dust)
-            for (let i = 0; i < 150; i++) {
-                spaceDust.push({
-                    x: Math.random() * WORLD_SIZE,
-                    y: Math.random() * WORLD_SIZE,
-                    radius: Math.random() * 3 + 1.5,
-                    parallax: Math.random() * 0.5 + 0.2,
-                    vx: (Math.random() - 0.5) * 20,
-                    vy: (Math.random() - 0.5) * 20,
-                    hue: Math.random() * 360,
-                    seed: Math.random() * 1000
-                });
-            }
         });
 
         const resetModal = document.getElementById('reset-modal');
@@ -1150,21 +1111,12 @@
             let moveAngle = speed > 0.1 ? Math.atan2(cell.vy, cell.vx) : 0; 
             
             let jiggle = Math.sin(currentTime / 40) * (cell.wobble || 0) * 0.2; 
-            
-            let speedFactor = speed / 15; 
-            let baseStretch = 1 + (speedFactor * 0.02) + jiggle;
-            if (isSprinting) baseStretch += 0.15; 
-            let stretch = Math.max(0.5, Math.min(baseStretch, 1.8)); 
+            let stretch = Math.max(0.5, Math.min(1 + (speed / 150) + jiggle, 1.7)); 
             let squash = 1 / stretch; 
 
-            let squashX = 0, squashY = 0, bulgeX = 0, bulgeY = 0;
-            if (cell.x < cell.radius) { squashX = cell.radius - cell.x; bulgeY = squashX * 1.5; }
-            else if (cell.x > WORLD_SIZE - cell.radius) { squashX = cell.radius - (WORLD_SIZE - cell.x); bulgeY = squashX * 1.5; }
-            if (cell.y < cell.radius) { squashY = cell.radius - cell.y; bulgeX = squashY * 1.5; }
-            else if (cell.y > WORLD_SIZE - cell.radius) { squashY = cell.radius - (WORLD_SIZE - cell.y); bulgeX = squashY * 1.5; }
-
-            ctx.save(); ctx.translate(cell.x, cell.y); 
-            ctx.rotate(moveAngle);
+            ctx.save(); 
+            ctx.translate(cell.x, cell.y); 
+            ctx.rotate(moveAngle); 
             
             if (isInvincible && !godMode) ctx.globalAlpha = 0.4 + Math.abs(Math.sin(currentTime / 150)) * 0.4;
             
@@ -1176,31 +1128,10 @@
                 let a = i * Math.PI / 180;
                 let r = cell.radius + Math.sin(a * 4 + currentTime / 60) * (cell.wobble || 0) * 0.5;
                 
-                let rx = Math.cos(a) * r * stretch; 
-                let ry = Math.sin(a) * r * squash;
+                let px = Math.cos(a) * r * stretch; 
+                let py = Math.sin(a) * r * squash;
                 
-                if (rx > 0) rx += bulgeX; else rx -= bulgeX;
-                if (ry > 0) ry += bulgeY; else ry -= bulgeY;
-                
-                let originalCos = Math.cos(-moveAngle);
-                let originalSin = Math.sin(-moveAngle);
-                let unrotatedX = rx * originalCos - ry * originalSin;
-                let unrotatedY = rx * originalSin + ry * originalCos;
-                
-                let gx = cell.x + unrotatedX; 
-                let gy = cell.y + unrotatedY;
-                
-                if (gx < 0) gx = 0; 
-                if (gx > WORLD_SIZE) gx = WORLD_SIZE;
-                if (gy < 0) gy = 0; 
-                if (gy > WORLD_SIZE) gy = WORLD_SIZE;
-                
-                let finalX = gx - cell.x; 
-                let finalY = gy - cell.y;
-                let finalRx = finalX * Math.cos(moveAngle) + finalY * Math.sin(moveAngle);
-                let finalRy = -finalX * Math.sin(moveAngle) + finalY * Math.cos(moveAngle);
-                
-                if (i === 0) ctx.moveTo(finalRx, finalRy); else ctx.lineTo(finalRx, finalRy);
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
             }
             ctx.closePath();
             
@@ -1249,14 +1180,22 @@
                     if (isQuitting) { quitTimer -= deltaTime; if (quitTimer > 0) { killBtn.innerText = `⏳ Afslutter om ${Math.ceil(quitTimer)}s`; } else { socket.emit('suicide'); playerCells = []; } } 
                     
                     avgX = 0; avgY = 0; let totalArea = 0; let totalVirtualArea = 0; 
+                    let refX = playerCells[0].x; 
+                    let refY = playerCells[0].y;
+
                     playerCells.forEach(c => { 
+                        let cx = c.x; let cy = c.y;
+                        if (cx - refX > WORLD_SIZE / 2) cx -= WORLD_SIZE;
+                        if (refX - cx > WORLD_SIZE / 2) cx += WORLD_SIZE;
+                        if (cy - refY > WORLD_SIZE / 2) cy -= WORLD_SIZE;
+                        if (refY - cy > WORLD_SIZE / 2) cy += WORLD_SIZE;
+
                         let area = c.radius * c.radius; 
-                        avgX += c.x * area; 
-                        avgY += c.y * area; 
+                        avgX += cx * area; 
+                        avgY += cy * area; 
                         totalArea += area; 
                         totalVirtualArea += (c.virtualArea || area);
                         
-                        // NYT: Fartspor for spilleren
                         let speed = Math.hypot(c.vx || 0, c.vy || 0);
                         if (speed > 5 || isSprinting) {
                             if (Math.random() < (isSprinting ? 0.5 : 0.1)) {
@@ -1273,6 +1212,8 @@
                         }
                     }); 
                     avgX /= totalArea; avgY /= totalArea; 
+                    avgX = (avgX + WORLD_SIZE) % WORLD_SIZE;
+                    avgY = (avgY + WORLD_SIZE) % WORLD_SIZE;
                     
                     let startScoreBonus = (playerUpgrades.startSize || 0) * 500;
                     let myStartRadius = 30 * (1 + ((playerUpgrades.startSize || 0) * 0.05));
@@ -1302,7 +1243,17 @@
                         cell.y += cell.vy * (deltaTime * 60); 
                         if (isFrozen) { cell.vx *= 0.5; cell.vy *= 0.5; } else { cell.vx *= 0.88; cell.vy *= 0.88;  }
 
-                        let mouseWorldX = avgX + mouse.x / currentZoom; let mouseWorldY = avgY + mouse.y / currentZoom; let dx = mouseWorldX - cell.x; let dy = mouseWorldY - cell.y; let distToMouse = Math.hypot(dx, dy) || 1; 
+                        let mouseWorldX = avgX + mouse.x / currentZoom; let mouseWorldY = avgY + mouse.y / currentZoom; 
+                        
+                        let dx = mouseWorldX - cell.x; 
+                        let dy = mouseWorldY - cell.y; 
+                        
+                        if (dx > WORLD_SIZE / 2) dx -= WORLD_SIZE;
+                        if (dx < -WORLD_SIZE / 2) dx += WORLD_SIZE;
+                        if (dy > WORLD_SIZE / 2) dy -= WORLD_SIZE;
+                        if (dy < -WORLD_SIZE / 2) dy += WORLD_SIZE;
+                        
+                        let distToMouse = Math.hypot(dx, dy) || 1; 
                         
                         let speedMultiplier = 1 + ((playerUpgrades.speed || 0) * 0.05); 
                         if (speedBoostTimer > 0) speedMultiplier *= 1.8;
@@ -1356,31 +1307,17 @@
                         
                         feeders.forEach(f => { let fDist = Math.hypot(cell.x - f.x, cell.y - f.y) || 1; let overlap = (cell.radius + f.radius) - fDist; if (overlap > 0) { cell.x += ((cell.x - f.x) / fDist) * overlap; cell.y += ((cell.y - f.y) / fDist) * overlap; cell.wobble = Math.min(1.0, (cell.wobble || 0) + overlap * 0.01); } });
                         
-                        let squishLimit = cell.radius * 0.3; 
-                        let hitWall = false;
+                        let justPortaled = false;
+                        if (cell.x < 0) { cell.x += WORLD_SIZE; justPortaled = true; }
+                        else if (cell.x > WORLD_SIZE) { cell.x -= WORLD_SIZE; justPortaled = true; }
+
+                        if (cell.y < 0) { cell.y += WORLD_SIZE; justPortaled = true; }
+                        else if (cell.y > WORLD_SIZE) { cell.y -= WORLD_SIZE; justPortaled = true; }
                         
-                        if (cell.x <= squishLimit) { 
-                            cell.x = squishLimit; 
-                            if (cell.vx < -1) { cell.wobble = Math.max(cell.wobble||0, 0.8); hitWall = true; } 
-                            cell.vx *= -0.1; 
-                        } 
-                        if (cell.x >= WORLD_SIZE - squishLimit) { 
-                            cell.x = WORLD_SIZE - squishLimit; 
-                            if (cell.vx > 1) { cell.wobble = Math.max(cell.wobble||0, 0.8); hitWall = true; } 
-                            cell.vx *= -0.1; 
-                        } 
-                        if (cell.y <= squishLimit) { 
-                            cell.y = squishLimit; 
-                            if (cell.vy < -1) { cell.wobble = Math.max(cell.wobble||0, 0.8); hitWall = true; } 
-                            cell.vy *= -0.1; 
-                        } 
-                        if (cell.y >= WORLD_SIZE - squishLimit) { 
-                            cell.y = WORLD_SIZE - squishLimit; 
-                            if (cell.vy > 1) { cell.wobble = Math.max(cell.wobble||0, 0.8); hitWall = true; } 
-                            cell.vy *= -0.1; 
+                        if (justPortaled) {
+                            cell.wobble = Math.max(cell.wobble||0, 0.8);
                         }
-                        
-                        if (hitWall) cell.stunTimer = 0.15;
+
                         if (cell.stunTimer > 0) cell.stunTimer -= deltaTime;
                     });
 
@@ -1388,13 +1325,27 @@
                         for (let j = i + 1; j < playerCells.length; j++) {
                             let c1 = playerCells[i], c2 = playerCells[j]; 
                             if (c1.markedForDeletion || c2.markedForDeletion) continue;
+                            
+                            let dx = c2.x - c1.x;
+                            let dy = c2.y - c1.y;
+                            
+                            if (dx > WORLD_SIZE / 2) dx -= WORLD_SIZE;
+                            if (dx < -WORLD_SIZE / 2) dx += WORLD_SIZE;
+                            if (dy > WORLD_SIZE / 2) dy -= WORLD_SIZE;
+                            if (dy < -WORLD_SIZE / 2) dy += WORLD_SIZE;
 
-                            let dist = Math.hypot(c2.x - c1.x, c2.y - c1.y) || 1; 
+                            let dist = Math.hypot(dx, dy) || 1; 
                             let overlap = (c1.radius + c2.radius) - dist;
                             let wantToMerge = (isMerging && mergeCooldown <= 0);
 
                             if (wantToMerge) {
-                                if (overlap > -80) { let pull = 6; c1.x -= (c2.x - c1.x) / dist * -pull; c1.y -= (c2.y - c1.y) / dist * -pull; c2.x += (c2.x - c1.x) / dist * -pull; c2.y += (c2.y - c1.y) / dist * -pull; }
+                                if (overlap > -80) { 
+                                    let pull = 6; 
+                                    c1.x -= (dx / dist) * -pull; 
+                                    c1.y -= (dy / dist) * -pull; 
+                                    c2.x += (dx / dist) * -pull; 
+                                    c2.y += (dy / dist) * -pull; 
+                                }
                                 if (dist < Math.max(c1.radius, c2.radius) * 0.85 || dist < 10) {
                                     let c1Target = c1.targetRadius || c1.radius; let c2Target = c2.targetRadius || c2.radius;
                                     if (c1Target >= c2Target) { 
@@ -1408,7 +1359,11 @@
                                     }
                                 }
                             } else if (overlap > 0) { 
-                                let push = overlap * 0.5; c1.x -= (c2.x - c1.x) / dist * push; c1.y -= (c2.y - c1.y) / dist * push; c2.x += (c2.x - c1.x) / dist * push; c2.y += (c2.y - c1.y) / dist * push; 
+                                let push = overlap * 0.5; 
+                                c1.x -= (dx / dist) * push; 
+                                c1.y -= (dy / dist) * push; 
+                                c2.x += (dx / dist) * push; 
+                                c2.y += (dy / dist) * push; 
                                 c1.wobble = Math.min(0.8, (c1.wobble || 0) + overlap * 0.05); 
                                 c2.wobble = Math.min(0.8, (c2.wobble || 0) + overlap * 0.05);
                             }
@@ -1422,7 +1377,15 @@
                             let cell = playerCells[i]; 
                             let popped = false;
                             for (let v = viruses.length - 1; v >= 0; v--) { 
-                                let virus = viruses[v]; let isMissile = Math.abs(virus.vx) > 5 || Math.abs(virus.vy) > 5; let dist = Math.hypot(cell.x - virus.x, cell.y - virus.y); 
+                                let virus = viruses[v]; let isMissile = Math.abs(virus.vx) > 5 || Math.abs(virus.vy) > 5; 
+                                let vDistX = cell.x - virus.x;
+                                let vDistY = cell.y - virus.y;
+                                if (vDistX > WORLD_SIZE / 2) vDistX -= WORLD_SIZE;
+                                if (vDistX < -WORLD_SIZE / 2) vDistX += WORLD_SIZE;
+                                if (vDistY > WORLD_SIZE / 2) vDistY -= WORLD_SIZE;
+                                if (vDistY < -WORLD_SIZE / 2) vDistY += WORLD_SIZE;
+
+                                let dist = Math.hypot(vDistX, vDistY); 
                                 if (!popped && cell.radius > virus.radius * 1.15 && dist < cell.radius && !isMissile) { 
                                     popped = true;
                                     ignoreId(virus.id); 
@@ -1540,7 +1503,15 @@
                         
                         for (let eIndex = enemy.cells.length - 1; eIndex >= 0; eIndex--) { 
                             let enemyCell = enemy.cells[eIndex]; 
-                            if (myCell.radius > enemyCell.radius * 1.1 && Math.hypot(myCell.x - enemyCell.x, myCell.y - enemyCell.y) < myCell.radius) { 
+                            
+                            let eDistX = myCell.x - enemyCell.x;
+                            let eDistY = myCell.y - enemyCell.y;
+                            if (eDistX > WORLD_SIZE / 2) eDistX -= WORLD_SIZE;
+                            if (eDistX < -WORLD_SIZE / 2) eDistX += WORLD_SIZE;
+                            if (eDistY > WORLD_SIZE / 2) eDistY -= WORLD_SIZE;
+                            if (eDistY < -WORLD_SIZE / 2) eDistY += WORLD_SIZE;
+
+                            if (myCell.radius > enemyCell.radius * 1.1 && Math.hypot(eDistX, eDistY) < myCell.radius) { 
                                 let rawGain = (enemyCell.radius ** 2 * 0.90) * foodUpgradeMultiplier;
                                 let slowDown = Math.max(0.15, 100 / Math.max(100, myCell.radius));
                                 myCell.radius = Math.sqrt(myCell.radius ** 2 + rawGain * slowDown); 
@@ -1558,7 +1529,14 @@
                     }
                     for (let id in bots) { 
                         let bot = bots[id]; 
-                        if (myCell.radius > bot.radius * 1.1 && Math.hypot(myCell.x - bot.x, myCell.y - bot.y) < myCell.radius) { 
+                        let bDistX = myCell.x - bot.x;
+                        let bDistY = myCell.y - bot.y;
+                        if (bDistX > WORLD_SIZE / 2) bDistX -= WORLD_SIZE;
+                        if (bDistX < -WORLD_SIZE / 2) bDistX += WORLD_SIZE;
+                        if (bDistY > WORLD_SIZE / 2) bDistY -= WORLD_SIZE;
+                        if (bDistY < -WORLD_SIZE / 2) bDistY += WORLD_SIZE;
+
+                        if (myCell.radius > bot.radius * 1.1 && Math.hypot(bDistX, bDistY) < myCell.radius) { 
                             let rawGain = (bot.radius ** 2 * 0.90) * foodUpgradeMultiplier;
                             let slowDown = Math.max(0.15, 100 / Math.max(100, myCell.radius));
                             myCell.radius = Math.sqrt(myCell.radius ** 2 + rawGain * slowDown); 
@@ -1584,11 +1562,18 @@
             for (let id in bots) {
                 let b = bots[id];
                 if (b.targetX !== undefined) {
+                    if (b.targetX - b.x > WORLD_SIZE / 2) b.x += WORLD_SIZE;
+                    else if (b.x - b.targetX > WORLD_SIZE / 2) b.x -= WORLD_SIZE;
+                    if (b.targetY - b.y > WORLD_SIZE / 2) b.y += WORLD_SIZE;
+                    else if (b.y - b.targetY > WORLD_SIZE / 2) b.y -= WORLD_SIZE;
+
                     b.x += (b.targetX - b.x) * lerpFactor;
                     b.y += (b.targetY - b.y) * lerpFactor;
                     b.radius += (b.targetRadius - b.radius) * lerpFactor;
+
+                    b.x = (b.x + WORLD_SIZE) % WORLD_SIZE;
+                    b.y = (b.y + WORLD_SIZE) % WORLD_SIZE;
                     
-                    // NYT: Fartspor for bots
                     let speed = Math.hypot(b.vx || 0, b.vy || 0);
                     if (speed > 5 || b.isSprinting) {
                         if (Math.random() < (b.isSprinting ? 0.4 : 0.05)) {
@@ -1611,9 +1596,17 @@
                 if (!p.cells) continue;
                 p.cells.forEach(cell => {
                     if (cell.targetX !== undefined) {
+                        if (cell.targetX - cell.x > WORLD_SIZE / 2) cell.x += WORLD_SIZE;
+                        else if (cell.x - cell.targetX > WORLD_SIZE / 2) cell.x -= WORLD_SIZE;
+                        if (cell.targetY - cell.y > WORLD_SIZE / 2) cell.y += WORLD_SIZE;
+                        else if (cell.y - cell.targetY > WORLD_SIZE / 2) cell.y -= WORLD_SIZE;
+
                         cell.x += (cell.targetX - cell.x) * lerpFactor;
                         cell.y += (cell.targetY - cell.y) * lerpFactor;
                         cell.radius += (cell.targetRadius - cell.radius) * lerpFactor;
+
+                        cell.x = (cell.x + WORLD_SIZE) % WORLD_SIZE;
+                        cell.y = (cell.y + WORLD_SIZE) % WORLD_SIZE;
                     }
                 });
             }
@@ -1631,7 +1624,6 @@
             ctx.translate(-avgX, -avgY); 
             const viewLeft = avgX - (canvas.width / 2) / currentZoom - 100, viewRight = avgX + (canvas.width / 2) / currentZoom + 100; const viewTop = avgY - (canvas.height / 2) / currentZoom - 100, viewBottom = avgY + (canvas.height / 2) / currentZoom + 100;
             
-            // NYT: Magiske Ildfluer (Opdateret Space Dust)
             spaceDust.forEach(d => {
                 d.x += d.vx * deltaTime;
                 d.y += d.vy * deltaTime;
@@ -1658,10 +1650,8 @@
             });
             ctx.globalAlpha = 1.0;
 
-            // Tegn gitter
             ctx.strokeStyle = 'rgba(44, 62, 80, 0.5)'; ctx.lineWidth = 1; const gridSize = 100; const startX = Math.max(0, Math.floor(viewLeft / gridSize) * gridSize); const startY = Math.max(0, Math.floor(viewTop / gridSize) * gridSize); for (let x = startX; x <= Math.min(WORLD_SIZE, viewRight); x += gridSize) { ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, Math.min(WORLD_SIZE, viewBottom)); ctx.stroke(); } for (let y = startY; y <= Math.min(WORLD_SIZE, viewBottom); y += gridSize) { ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(Math.min(WORLD_SIZE, viewRight), y); ctx.stroke(); } 
             
-            // NYT: Glødende Energi-skjold kant (Laser-kant)
             ctx.save();
             let borderPulse = Math.abs(Math.sin(currentTime / 400));
             ctx.strokeStyle = `rgba(0, 255, 255, ${0.4 + borderPulse * 0.6})`;
@@ -1678,9 +1668,14 @@
             
             for (let i = powerups.length - 1; i >= 0; i--) {
                 let pu = powerups[i];
-                if (pu.x + 30 > viewLeft && pu.x - 30 < viewRight && pu.y + 30 > viewTop && pu.y - 30 < viewBottom) {
+                let pDistX = pu.x - avgX; if (pDistX > WORLD_SIZE/2) pDistX -= WORLD_SIZE; if (pDistX < -WORLD_SIZE/2) pDistX += WORLD_SIZE;
+                let pDistY = pu.y - avgY; if (pDistY > WORLD_SIZE/2) pDistY -= WORLD_SIZE; if (pDistY < -WORLD_SIZE/2) pDistY += WORLD_SIZE;
+                let drawX = avgX + pDistX;
+                let drawY = avgY + pDistY;
+
+                if (drawX + 30 > viewLeft && drawX - 30 < viewRight && drawY + 30 > viewTop && drawY - 30 < viewBottom) {
                     ctx.save();
-                    ctx.translate(pu.x, pu.y);
+                    ctx.translate(drawX, drawY);
                     let pulse = Math.abs(Math.sin(currentTime / 200)) * 0.2;
                     ctx.scale(1 + pulse, 1 + pulse);
                     
@@ -1707,7 +1702,9 @@
                 let eaten = false;
                 if (gameActive && playerCells.length > 0) {
                     playerCells.forEach(cell => {
-                        if (!eaten && Math.hypot(cell.x - pu.x, cell.y - pu.y) < cell.radius) {
+                        let cx = cell.x - pu.x; if (cx > WORLD_SIZE/2) cx -= WORLD_SIZE; if (cx < -WORLD_SIZE/2) cx += WORLD_SIZE;
+                        let cy = cell.y - pu.y; if (cy > WORLD_SIZE/2) cy -= WORLD_SIZE; if (cy < -WORLD_SIZE/2) cy += WORLD_SIZE;
+                        if (!eaten && Math.hypot(cx, cy) < cell.radius) {
                             eaten = true;
                             socket.emit('atePowerup', pu.id);
                             powerups.splice(i, 1);
@@ -1720,9 +1717,22 @@
 
             for (let i = soundWaves.length - 1; i >= 0; i--) { let wave = soundWaves[i]; wave.radius += 5; wave.alpha -= deltaTime * 2.0; if (wave.alpha <= 0) { soundWaves.splice(i, 1); continue; } ctx.beginPath(); ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2); ctx.strokeStyle = `hsla(${wave.hue}, 100%, 70%, ${wave.alpha})`; ctx.lineWidth = 4; ctx.stroke(); }
 
-            for (let i = 0; i < feeders.length; i++) { let f = feeders[i]; if (f.x + f.radius > viewLeft && f.x - f.radius < viewRight && f.y + f.radius > viewTop && f.y - f.radius < viewBottom) { f.rotation = (f.rotation || 0) + 0.005; let gradient = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.radius); gradient.addColorStop(0, `hsla(50, 100%, 80%, 1)`); gradient.addColorStop(0.5, `hsla(40, 100%, 50%, 0.8)`); gradient.addColorStop(1, `hsla(30, 100%, 40%, 0.2)`); ctx.fillStyle = gradient; drawStarShape(ctx, f.x, f.y, f.radius, 5, 0.4, f.rotation); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = `hsla(50, 100%, 70%, 0.8)`; ctx.stroke(); } }
+            for (let i = 0; i < feeders.length; i++) { 
+                let f = feeders[i]; 
+                let fDistX = f.x - avgX; if (fDistX > WORLD_SIZE/2) fDistX -= WORLD_SIZE; if (fDistX < -WORLD_SIZE/2) fDistX += WORLD_SIZE;
+                let fDistY = f.y - avgY; if (fDistY > WORLD_SIZE/2) fDistY -= WORLD_SIZE; if (fDistY < -WORLD_SIZE/2) fDistY += WORLD_SIZE;
+                let drawX = avgX + fDistX; let drawY = avgY + fDistY;
+
+                if (drawX + f.radius > viewLeft && drawX - f.radius < viewRight && drawY + f.radius > viewTop && drawY - f.radius < viewBottom) { 
+                    f.rotation = (f.rotation || 0) + 0.005; 
+                    let gradient = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, f.radius); 
+                    gradient.addColorStop(0, `hsla(50, 100%, 80%, 1)`); gradient.addColorStop(0.5, `hsla(40, 100%, 50%, 0.8)`); gradient.addColorStop(1, `hsla(30, 100%, 40%, 0.2)`); 
+                    ctx.fillStyle = gradient; 
+                    drawStarShape(ctx, drawX, drawY, f.radius, 5, 0.4, f.rotation); 
+                    ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = `hsla(50, 100%, 70%, 0.8)`; ctx.stroke(); 
+                } 
+            }
             
-            // NYT: Tegn fartspor (Trails) bagved mad og spillere
             for (let i = trailParticles.length - 1; i >= 0; i--) {
                 let p = trailParticles[i];
                 p.x += p.vx * deltaTime * 60;
@@ -1732,10 +1742,15 @@
                     trailParticles.splice(i, 1);
                     continue;
                 }
-                if (p.x > viewLeft && p.x < viewRight && p.y > viewTop && p.y < viewBottom) {
+                
+                let pDistX = p.x - avgX; if (pDistX > WORLD_SIZE/2) pDistX -= WORLD_SIZE; if (pDistX < -WORLD_SIZE/2) pDistX += WORLD_SIZE;
+                let pDistY = p.y - avgY; if (pDistY > WORLD_SIZE/2) pDistY -= WORLD_SIZE; if (pDistY < -WORLD_SIZE/2) pDistY += WORLD_SIZE;
+                let drawX = avgX + pDistX; let drawY = avgY + pDistY;
+
+                if (drawX > viewLeft && drawX < viewRight && drawY > viewTop && drawY < viewBottom) {
                     ctx.globalAlpha = p.alpha;
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.arc(drawX, drawY, p.radius, 0, Math.PI * 2);
                     ctx.fillStyle = `hsl(${p.hue}, 100%, 75%)`;
                     ctx.shadowBlur = 10;
                     ctx.shadowColor = `hsl(${p.hue}, 100%, 75%)`;
@@ -1745,15 +1760,19 @@
             }
             ctx.globalAlpha = 1.0;
 
-            // NYT: Åndende, pulserende Mad
             for (let i = foods.length - 1; i >= 0; i--) { 
                 const food = foods[i]; 
-                if (food.x + 15 > viewLeft && food.x - 15 < viewRight && food.y + 15 > viewTop && food.y - 15 < viewBottom) { 
+                
+                let fDistX = food.x - avgX; if (fDistX > WORLD_SIZE/2) fDistX -= WORLD_SIZE; if (fDistX < -WORLD_SIZE/2) fDistX += WORLD_SIZE;
+                let fDistY = food.y - avgY; if (fDistY > WORLD_SIZE/2) fDistY -= WORLD_SIZE; if (fDistY < -WORLD_SIZE/2) fDistY += WORLD_SIZE;
+                let drawX = avgX + fDistX; let drawY = avgY + fDistY;
+
+                if (drawX + 15 > viewLeft && drawX - 15 < viewRight && drawY + 15 > viewTop && drawY - 15 < viewBottom) { 
                     let floatOffset = Math.sin(currentTime / 200 + food.id * 10) * 1.5;
                     let drawRadius = Math.max(0.5, food.radius + floatOffset);
                     
                     ctx.beginPath(); 
-                    ctx.arc(food.x, food.y, drawRadius, 0, Math.PI * 2); 
+                    ctx.arc(drawX, drawY, drawRadius, 0, Math.PI * 2); 
                     ctx.fillStyle = `hsl(${food.hue}, 100%, 75%)`; 
                     ctx.shadowBlur = 8;
                     ctx.shadowColor = `hsl(${food.hue}, 100%, 60%)`;
@@ -1763,7 +1782,9 @@
                 let eaten = false;
                 if (gameActive && playerCells.length > 0) { 
                     playerCells.forEach(cell => { 
-                        if (!eaten && Math.hypot(cell.x - food.x, cell.y - food.y) < cell.radius) { 
+                        let cx = cell.x - food.x; if (cx > WORLD_SIZE/2) cx -= WORLD_SIZE; if (cx < -WORLD_SIZE/2) cx += WORLD_SIZE;
+                        let cy = cell.y - food.y; if (cy > WORLD_SIZE/2) cy -= WORLD_SIZE; if (cy < -WORLD_SIZE/2) cy += WORLD_SIZE;
+                        if (!eaten && Math.hypot(cx, cy) < cell.radius) { 
                             eaten = true;
                             let rawGain = (food.radius ** 2 * GROWTH_SPEED) * Math.max(0.025, 15 / cell.radius) * 4 * foodUpgradeMultiplier;
                             let slowDown = Math.max(0.15, 100 / Math.max(100, cell.radius));
@@ -1779,15 +1800,22 @@
             
             for (let i = ejectedMass.length - 1; i >= 0; i--) { 
                 let em = ejectedMass[i]; 
-                if (em.x + em.radius > viewLeft && em.x - em.radius < viewRight && em.y + em.radius > viewTop && em.y - em.radius < viewBottom) { 
-                    ctx.beginPath(); ctx.arc(em.x, em.y, em.radius, 0, Math.PI * 2); ctx.fillStyle = `hsl(${em.hue}, 80%, 60%)`; ctx.fill(); 
+                
+                let eDistX = em.x - avgX; if (eDistX > WORLD_SIZE/2) eDistX -= WORLD_SIZE; if (eDistX < -WORLD_SIZE/2) eDistX += WORLD_SIZE;
+                let eDistY = em.y - avgY; if (eDistY > WORLD_SIZE/2) eDistY -= WORLD_SIZE; if (eDistY < -WORLD_SIZE/2) eDistY += WORLD_SIZE;
+                let drawX = avgX + eDistX; let drawY = avgY + eDistY;
+
+                if (drawX + em.radius > viewLeft && drawX - em.radius < viewRight && drawY + em.radius > viewTop && drawY - em.radius < viewBottom) { 
+                    ctx.beginPath(); ctx.arc(drawX, drawY, em.radius, 0, Math.PI * 2); ctx.fillStyle = `hsl(${em.hue}, 80%, 60%)`; ctx.fill(); 
                     if (em.isSprintDrop) { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.stroke(); } 
                     else { ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.stroke(); }
                 } 
                 let eaten = false;
                 if (gameActive && playerCells.length > 0) { 
                     playerCells.forEach(cell => { 
-                        if (!eaten && cell.radius > em.radius * 1.1 && Math.hypot(cell.x - em.x, cell.y - em.y) < cell.radius) { 
+                        let cx = cell.x - em.x; if (cx > WORLD_SIZE/2) cx -= WORLD_SIZE; if (cx < -WORLD_SIZE/2) cx += WORLD_SIZE;
+                        let cy = cell.y - em.y; if (cy > WORLD_SIZE/2) cy -= WORLD_SIZE; if (cy < -WORLD_SIZE/2) cy += WORLD_SIZE;
+                        if (!eaten && cell.radius > em.radius * 1.1 && Math.hypot(cx, cy) < cell.radius) { 
                             eaten = true;
                             let rawGain = 0;
                             if (em.isSprintDrop) rawGain = (6 ** 2 * GROWTH_SPEED) * Math.max(0.025, 15 / cell.radius) * 8 * foodUpgradeMultiplier * (em.massMultiplier || 1);
@@ -1805,14 +1833,40 @@
                 } 
             }
 
-            for (let i = 0; i < viruses.length; i++) { let v = viruses[i]; if (v.x + v.radius > viewLeft && v.x - v.radius < viewRight && v.y + v.radius > viewTop && v.y - v.radius < viewBottom) { v.rotation = (v.rotation || 0) + 0.005; let speed = Math.hypot(v.vx || 0, v.vy || 0); let angle = speed > 0.1 ? Math.atan2(v.vy, v.vx) : 0; let stretch = Math.max(0.8, Math.min(1 + (speed / 100), 1.4)); let squash = 1 / stretch; ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(angle); ctx.scale(stretch, squash); ctx.fillStyle = `rgba(46, 204, 113, 0.9)`; drawStarShape(ctx, 0, 0, v.radius, 16, 0.85, v.rotation - angle); ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = `rgba(39, 174, 96, 1)`; ctx.stroke(); ctx.restore(); } }
-            for (let id in bots) { let b = bots[id]; if (b.x + b.radius > viewLeft && b.x - b.radius < viewRight && b.y + b.radius > viewTop && b.y - b.radius < viewBottom) { drawSlimeCell(ctx, b, b.name, b.hue, false, false, b.isSprinting, null, "Bot", currentTime); } }
+            for (let i = 0; i < viruses.length; i++) { 
+                let v = viruses[i]; 
+                let vDistX = v.x - avgX; if (vDistX > WORLD_SIZE/2) vDistX -= WORLD_SIZE; if (vDistX < -WORLD_SIZE/2) vDistX += WORLD_SIZE;
+                let vDistY = v.y - avgY; if (vDistY > WORLD_SIZE/2) vDistY -= WORLD_SIZE; if (vDistY < -WORLD_SIZE/2) vDistY += WORLD_SIZE;
+                let drawX = avgX + vDistX; let drawY = avgY + vDistY;
+
+                if (drawX + v.radius > viewLeft && drawX - v.radius < viewRight && drawY + v.radius > viewTop && drawY - v.radius < viewBottom) { 
+                    v.rotation = (v.rotation || 0) + 0.005; let speed = Math.hypot(v.vx || 0, v.vy || 0); let angle = speed > 0.1 ? Math.atan2(v.vy, v.vx) : 0; let stretch = Math.max(0.8, Math.min(1 + (speed / 100), 1.4)); let squash = 1 / stretch; 
+                    ctx.save(); ctx.translate(drawX, drawY); ctx.rotate(angle); ctx.scale(stretch, squash); ctx.fillStyle = `rgba(46, 204, 113, 0.9)`; drawStarShape(ctx, 0, 0, v.radius, 16, 0.85, v.rotation - angle); ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = `rgba(39, 174, 96, 1)`; ctx.stroke(); ctx.restore(); 
+                } 
+            }
+            
+            for (let id in bots) { 
+                let b = bots[id]; 
+                let bDistX = b.x - avgX; if (bDistX > WORLD_SIZE/2) bDistX -= WORLD_SIZE; if (bDistX < -WORLD_SIZE/2) bDistX += WORLD_SIZE;
+                let bDistY = b.y - avgY; if (bDistY > WORLD_SIZE/2) bDistY -= WORLD_SIZE; if (bDistY < -WORLD_SIZE/2) bDistY += WORLD_SIZE;
+                let drawX = avgX + bDistX; let drawY = avgY + bDistY;
+                
+                if (drawX + b.radius > viewLeft && drawX - b.radius < viewRight && drawY + b.radius > viewTop && drawY - b.radius < viewBottom) { 
+                    let tempBot = {...b, x: drawX, y: drawY};
+                    drawSlimeCell(ctx, tempBot, b.name, b.hue, false, false, b.isSprinting, null, "Bot", currentTime); 
+                } 
+            }
 
             for (let id in otherPlayers) { 
                 let p = otherPlayers[id]; if (!p.cells) continue; 
                 p.cells.forEach(cell => { 
-                    if (cell.x + cell.radius > viewLeft && cell.x - cell.radius < viewRight && cell.y + cell.radius > viewTop && cell.y - cell.radius < viewBottom) { 
-                        drawSlimeCell(ctx, cell, p.name || "Fjende", p.hue || 0, false, p.isInvincible, p.isSprinting, p.skin, "Lv. " + (p.level || 1), currentTime);
+                    let cDistX = cell.x - avgX; if (cDistX > WORLD_SIZE/2) cDistX -= WORLD_SIZE; if (cDistX < -WORLD_SIZE/2) cDistX += WORLD_SIZE;
+                    let cDistY = cell.y - avgY; if (cDistY > WORLD_SIZE/2) cDistY -= WORLD_SIZE; if (cDistY < -WORLD_SIZE/2) cDistY += WORLD_SIZE;
+                    let drawX = avgX + cDistX; let drawY = avgY + cDistY;
+
+                    if (drawX + cell.radius > viewLeft && drawX - cell.radius < viewRight && drawY + cell.radius > viewTop && drawY - cell.radius < viewBottom) { 
+                        let tempCell = {...cell, x: drawX, y: drawY};
+                        drawSlimeCell(ctx, tempCell, p.name || "Fjende", p.hue || 0, false, p.isInvincible, p.isSprinting, p.skin, "Lv. " + (p.level || 1), currentTime);
                     } 
                 }); 
             }
@@ -1823,7 +1877,12 @@
                 socket.emit('playerMovement', { cells: simpleCells, isSprinting: isSprinting, level: myCurrentLevel, isInvincible: amIInvincible, godMode: godMode, score: currentScore });
                 
                 playerCells.forEach(cell => { 
-                    drawSlimeCell(ctx, cell, playerName, cell.hue, true, (amIInvincible && !godMode), isSprinting, playerSkinBase64, "Lv. " + myCurrentLevel, currentTime);
+                    let cDistX = cell.x - avgX; if (cDistX > WORLD_SIZE/2) cDistX -= WORLD_SIZE; if (cDistX < -WORLD_SIZE/2) cDistX += WORLD_SIZE;
+                    let cDistY = cell.y - avgY; if (cDistY > WORLD_SIZE/2) cDistY -= WORLD_SIZE; if (cDistY < -WORLD_SIZE/2) cDistY += WORLD_SIZE;
+                    let drawX = avgX + cDistX; let drawY = avgY + cDistY;
+
+                    let tempCell = {...cell, x: drawX, y: drawY};
+                    drawSlimeCell(ctx, tempCell, playerName, cell.hue, true, (amIInvincible && !godMode), isSprinting, playerSkinBase64, "Lv. " + myCurrentLevel, currentTime);
                 });
             } 
             
@@ -1838,10 +1897,15 @@
                     slimeParticles.splice(i, 1);
                     continue;
                 }
-                if (p.x > viewLeft && p.x < viewRight && p.y > viewTop && p.y < viewBottom) {
+                
+                let pDistX = p.x - avgX; if (pDistX > WORLD_SIZE/2) pDistX -= WORLD_SIZE; if (pDistX < -WORLD_SIZE/2) pDistX += WORLD_SIZE;
+                let pDistY = p.y - avgY; if (pDistY > WORLD_SIZE/2) pDistY -= WORLD_SIZE; if (pDistY < -WORLD_SIZE/2) pDistY += WORLD_SIZE;
+                let drawX = avgX + pDistX; let drawY = avgY + pDistY;
+
+                if (drawX > viewLeft && drawX < viewRight && drawY > viewTop && drawY < viewBottom) {
                     ctx.globalAlpha = p.alpha;
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.arc(drawX, drawY, p.radius, 0, Math.PI * 2);
                     ctx.fillStyle = `hsl(${p.hue}, 80%, 60%)`;
                     ctx.fill();
                 }
@@ -1855,12 +1919,17 @@
                     shockwaves.splice(i, 1);
                     continue;
                 }
-                if (sw.x > viewLeft - 500 && sw.x < viewRight + 500 && sw.y > viewTop - 500 && sw.y < viewBottom + 500) {
+                
+                let sDistX = sw.x - avgX; if (sDistX > WORLD_SIZE/2) sDistX -= WORLD_SIZE; if (sDistX < -WORLD_SIZE/2) sDistX += WORLD_SIZE;
+                let sDistY = sw.y - avgY; if (sDistY > WORLD_SIZE/2) sDistY -= WORLD_SIZE; if (sDistY < -WORLD_SIZE/2) sDistY += WORLD_SIZE;
+                let drawX = avgX + sDistX; let drawY = avgY + sDistY;
+
+                if (drawX > viewLeft - 500 && drawX < viewRight + 500 && drawY > viewTop - 500 && drawY < viewBottom + 500) {
                     ctx.save();
                     ctx.globalAlpha = sw.alpha;
                     
                     ctx.beginPath();
-                    ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                    ctx.arc(drawX, drawY, sw.radius, 0, Math.PI * 2);
                     ctx.lineWidth = 15 * sw.alpha;
                     ctx.strokeStyle = `hsl(${sw.color}, 100%, 70%)`;
                     ctx.shadowColor = `hsl(${sw.color}, 100%, 60%)`;
@@ -1874,9 +1943,9 @@
                     ctx.fillStyle = "#f1c40f"; 
                     ctx.lineWidth = 4;
                     ctx.strokeStyle = "black";
-                    let textY = sw.y - sw.radius * 0.3;
-                    ctx.strokeText(sw.text, sw.x, textY);
-                    ctx.fillText(sw.text, sw.x, textY);
+                    let textY = drawY - sw.radius * 0.3;
+                    ctx.strokeText(sw.text, drawX, textY);
+                    ctx.fillText(sw.text, drawX, textY);
                     
                     ctx.restore();
                 }
