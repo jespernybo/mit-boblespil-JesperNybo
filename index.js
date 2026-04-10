@@ -40,13 +40,51 @@ const ELITE_NAMES = [
 function isCloseEnough(playerCells, targetX, targetY, targetRadius) {
     if (!playerCells || playerCells.length === 0) return false;
     for (let cell of playerCells) {
-        let dist = Math.hypot(cell.x - targetX, cell.y - targetY);
-        // Tillad lidt ekstra afstand pga. portal-systemet (hvis de er tæt på kanten)
-        if (dist < cell.radius + targetRadius + 350 || Math.abs(dist - WORLD_SIZE) < cell.radius + targetRadius + 350) {
+        let dx = Math.abs(cell.x - targetX);
+        if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+        let dy = Math.abs(cell.y - targetY);
+        if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+        let dist = Math.hypot(dx, dy);
+        if (dist < cell.radius + targetRadius + 350) {
             return true;
         }
     }
     return false;
+}
+
+// NYT: Funktion der finder en helt sikker plads til at spawne noget (væg-til-væg tjek via portal-logik)
+function getSafeSpawnPosition(minDistToPlayer = 800) {
+    let safe = false;
+    let spawnX = 0;
+    let spawnY = 0;
+    let attempts = 0;
+    
+    while (!safe && attempts < 30) {
+        safe = true;
+        spawnX = Math.random() * WORLD_SIZE;
+        spawnY = Math.random() * WORLD_SIZE;
+        
+        for (let pId in players) {
+            let p = players[pId];
+            if (p.cells && !p.godMode) { 
+                for (let c of p.cells) {
+                    let dx = Math.abs(c.x - spawnX);
+                    if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                    let dy = Math.abs(c.y - spawnY);
+                    if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                    if (Math.hypot(dx, dy) < c.radius + minDistToPlayer) { 
+                        safe = false; 
+                        break; 
+                    }
+                }
+            }
+            if (!safe) break;
+        }
+        attempts++;
+    }
+    return { x: spawnX, y: spawnY };
 }
 
 setInterval(() => {
@@ -98,37 +136,21 @@ function spawnBot(id) {
         bName = availableNames[Math.floor(Math.random() * availableNames.length)];
     }
 
-    let safe = false;
-    let spawnX = Math.random() * WORLD_SIZE;
-    let spawnY = Math.random() * WORLD_SIZE;
-    let attempts = 0;
-    
-    while (!safe && attempts < 20) {
-        safe = true;
-        spawnX = Math.random() * WORLD_SIZE;
-        spawnY = Math.random() * WORLD_SIZE;
-        
-        for (let pId in players) {
-            let p = players[pId];
-            if (p.cells && !p.isInvincible && !p.godMode) {
-                for (let c of p.cells) {
-                    if (Math.hypot(c.x - spawnX, c.y - spawnY) < c.radius + 600) { 
-                        safe = false; 
-                        break; 
-                    }
-                }
-            }
-            if (!safe) break;
-        }
-        attempts++;
-    }
+    // NYT: Brug det sikre spawn system
+    let pos = getSafeSpawnPosition(800);
 
     return { 
-        id: id, groupId: id, x: spawnX, y: spawnY, 
+        id: id, groupId: id, x: pos.x, y: pos.y, 
         radius: startRadius, hue: Math.floor(Math.random() * 360), 
-        name: bName, targetX: spawnX, targetY: spawnY, 
+        name: bName, targetX: pos.x, targetY: pos.y, 
         vx: 0, vy: 0, isSprinting: false, sprintBurst: 0, behavior: bType, mergeCooldown: 0 
     };
+}
+
+// NYT: Funktion til at skabe virusser på sikre steder
+function spawnVirus() {
+    let pos = getSafeSpawnPosition(1000); // Virus spawner endnu længere væk
+    return { id: Math.random(), x: pos.x, y: pos.y, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 };
 }
 
 for(let i = 0; i < 30; i++) {
@@ -137,7 +159,7 @@ for(let i = 0; i < 30; i++) {
 }
 
 for(let i = 0; i < 4; i++) {
-    viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+    viruses.push(spawnVirus());
 }
 
 function spawnFeeder() {
@@ -199,7 +221,7 @@ setInterval(() => {
         v.lifeTimer -= deltaTime;
         if (v.lifeTimer <= 0) {
             viruses.splice(i, 1);
-            viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+            viruses.push(spawnVirus()); // Bruger safe spawn
             continue; 
         }
 
@@ -224,7 +246,11 @@ setInterval(() => {
 
         for (let v = 0; v < viruses.length; v++) {
             let virus = viruses[v];
-            if (Math.hypot(virus.x - em.x, virus.y - em.y) < virus.radius) {
+            
+            let vDistX = Math.abs(virus.x - em.x); if (vDistX > WORLD_SIZE / 2) vDistX = WORLD_SIZE - vDistX;
+            let vDistY = Math.abs(virus.y - em.y); if (vDistY > WORLD_SIZE / 2) vDistY = WORLD_SIZE - vDistY;
+
+            if (Math.hypot(vDistX, vDistY) < virus.radius) {
                 if (em.isSprintDrop) {
                     virus.radius += 0.5 * (em.massMultiplier || 1);
                 } else {
@@ -234,7 +260,10 @@ setInterval(() => {
                         virus.eaten = 0; virus.radius = 65; 
                         let speed = Math.hypot(em.vx, em.vy) || 1;
                         if (viruses.length < 15) { 
-                            viruses.push({ id: Math.random(), x: virus.x, y: virus.y, vx: (em.vx / speed) * 35, vy: (em.vy / speed) * 35, radius: 65, eaten: 0, lifeTimer: 60 });
+                            let newV = spawnVirus(); // Skab ny virus et sikkert sted!
+                            newV.x = virus.x; newV.y = virus.y; // Overruler med start position
+                            newV.vx = (em.vx / speed) * 35; newV.vy = (em.vy / speed) * 35;
+                            viruses.push(newV);
                         }
                     }
                 }
@@ -247,7 +276,11 @@ setInterval(() => {
 
         for (let id in bots) {
             let bot = bots[id];
-            if (Math.hypot(bot.x - em.x, bot.y - em.y) < bot.radius) {
+            
+            let bDistX = Math.abs(bot.x - em.x); if (bDistX > WORLD_SIZE / 2) bDistX = WORLD_SIZE - bDistX;
+            let bDistY = Math.abs(bot.y - em.y); if (bDistY > WORLD_SIZE / 2) bDistY = WORLD_SIZE - bDistY;
+
+            if (Math.hypot(bDistX, bDistY) < bot.radius) {
                 let eliteBonus = bot.behavior === 'elite' ? 1.5 : 1.0;
                 if (em.isSprintDrop) {
                     bot.radius = Math.sqrt(bot.radius**2 + ((6**2) * 0.060 * 2 * eliteBonus * (em.massMultiplier || 1))); 
@@ -289,7 +322,10 @@ setInterval(() => {
                 if (p.isInvincible || p.godMode) continue; 
                 if (p.cells) {
                     for (let cell of p.cells) {
-                        let dist = Math.hypot(cell.x - bot.x, cell.y - bot.y);
+                        let dx = Math.abs(cell.x - bot.x); if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                        let dy = Math.abs(cell.y - bot.y); if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                        let dist = Math.hypot(dx, dy);
                         if (dist < visionRadius) {
                             if (cell.radius > bot.radius * 1.15 && dist < closestThreatDist) {
                                 closestThreat = cell; closestThreatDist = dist;
@@ -309,7 +345,10 @@ setInterval(() => {
                 let otherBot = bots[otherId];
                 if (bot.groupId === otherBot.groupId) continue;
 
-                let dist = Math.hypot(otherBot.x - bot.x, otherBot.y - bot.y);
+                let dx = Math.abs(otherBot.x - bot.x); if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                let dy = Math.abs(otherBot.y - bot.y); if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                let dist = Math.hypot(dx, dy);
                 if (dist < visionRadius) {
                     if (otherBot.radius > bot.radius * 1.15 && dist < closestThreatDist) {
                         closestThreat = otherBot; closestThreatDist = dist;
@@ -323,7 +362,10 @@ setInterval(() => {
             }
 
             for (let v of viruses) {
-                let dist = Math.hypot(v.x - bot.x, v.y - bot.y);
+                let dx = Math.abs(v.x - bot.x); if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                let dy = Math.abs(v.y - bot.y); if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                let dist = Math.hypot(dx, dy);
                 if (dist < visionRadius && bot.radius > v.radius * 1.15) {
                     if (dist < closestThreatDist) {
                         closestThreat = v; closestThreatDist = dist; 
@@ -333,7 +375,10 @@ setInterval(() => {
 
             let bestFood = null; let bestFoodScore = -Infinity;
             for (let em of ejectedMass) {
-                let dist = Math.hypot(em.x - bot.x, em.y - bot.y);
+                let dx = Math.abs(em.x - bot.x); if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                let dy = Math.abs(em.y - bot.y); if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                let dist = Math.hypot(dx, dy);
                 if (dist < visionRadius) {
                     let score = (em.isSprintDrop ? 100 : 50) - dist * 0.05; 
                     if (score > bestFoodScore) { bestFoodScore = score; bestFood = em; }
@@ -341,7 +386,10 @@ setInterval(() => {
             }
             if (!bestFood) {
                 for (let f of foods) {
-                    let dist = Math.hypot(f.x - bot.x, f.y - bot.y);
+                    let dx = Math.abs(f.x - bot.x); if (dx > WORLD_SIZE / 2) dx = WORLD_SIZE - dx;
+                    let dy = Math.abs(f.y - bot.y); if (dy > WORLD_SIZE / 2) dy = WORLD_SIZE - dy;
+
+                    let dist = Math.hypot(dx, dy);
                     if (dist < visionRadius) {
                         let score = 10 - dist * 0.05;
                         if (score > bestFoodScore) { bestFoodScore = score; bestFood = f; }
@@ -455,7 +503,15 @@ setInterval(() => {
             bot.isSprinting = leader.isSprinting;
         }
 
-        let dx = bot.targetX - bot.x; let dy = bot.targetY - bot.y; let dist = Math.hypot(dx, dy) || 1;
+        // Tager højde for portalerne i bevægelsesretningen
+        let dx = bot.targetX - bot.x; 
+        let dy = bot.targetY - bot.y;
+        if (dx > WORLD_SIZE / 2) dx -= WORLD_SIZE;
+        if (dx < -WORLD_SIZE / 2) dx += WORLD_SIZE;
+        if (dy > WORLD_SIZE / 2) dy -= WORLD_SIZE;
+        if (dy < -WORLD_SIZE / 2) dy += WORLD_SIZE;
+        
+        let dist = Math.hypot(dx, dy) || 1;
         let botSpeedMultiplier = bot.behavior === 'elite' ? 0.85 : 0.55;
         let baseSpeed = Math.max(1.2, 35 / Math.sqrt(bot.radius)) * botSpeedMultiplier * (deltaTime * 60);
 
@@ -492,7 +548,10 @@ setInterval(() => {
         if (bot.y < 0) bot.y += WORLD_SIZE; else if (bot.y > WORLD_SIZE) bot.y -= WORLD_SIZE;
 
         for (let i = foods.length - 1; i >= 0; i--) {
-            if (Math.hypot(bot.x - foods[i].x, bot.y - foods[i].y) < bot.radius) {
+            let fDistX = Math.abs(bot.x - foods[i].x); if (fDistX > WORLD_SIZE / 2) fDistX = WORLD_SIZE - fDistX;
+            let fDistY = Math.abs(bot.y - foods[i].y); if (fDistY > WORLD_SIZE / 2) fDistY = WORLD_SIZE - fDistY;
+
+            if (Math.hypot(fDistX, fDistY) < bot.radius) {
                 bot.radius = Math.sqrt(bot.radius**2 + (foods[i].radius**2 * 0.060 * eliteBonus)); 
                 let eatenId = foods[i].id; 
                 let newFood = { id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, hue: Math.floor(Math.random() * 360), radius: 6 };
@@ -503,7 +562,10 @@ setInterval(() => {
 
         for (let v = viruses.length - 1; v >= 0; v--) {
             let virus = viruses[v];
-            let vDist = Math.hypot(bot.x - virus.x, bot.y - virus.y);
+            
+            let vDistX = Math.abs(bot.x - virus.x); if (vDistX > WORLD_SIZE / 2) vDistX = WORLD_SIZE - vDistX;
+            let vDistY = Math.abs(bot.y - virus.y); if (vDistY > WORLD_SIZE / 2) vDistY = WORLD_SIZE - vDistY;
+            let vDist = Math.hypot(vDistX, vDistY);
             
             if (bot.radius > virus.radius * 1.15 && vDist < bot.radius) {
                 let currentGroupCount = 0;
@@ -534,7 +596,7 @@ setInterval(() => {
                 
                 viruses.splice(v, 1);
                 if (viruses.length < 4) {
-                    viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+                    viruses.push(spawnVirus()); // Sikkert spawn
                 }
                 break; 
             }
@@ -546,7 +608,11 @@ setInterval(() => {
             if (p.cells) {
                 for(let i = p.cells.length - 1; i >= 0; i--) {
                     let cell = p.cells[i];
-                    if (bot.radius > cell.radius * 1.15 && Math.hypot(bot.x - cell.x, bot.y - cell.y) < bot.radius) {
+                    
+                    let cDistX = Math.abs(bot.x - cell.x); if (cDistX > WORLD_SIZE / 2) cDistX = WORLD_SIZE - cDistX;
+                    let cDistY = Math.abs(bot.y - cell.y); if (cDistY > WORLD_SIZE / 2) cDistY = WORLD_SIZE - cDistY;
+
+                    if (bot.radius > cell.radius * 1.15 && Math.hypot(cDistX, cDistY) < bot.radius) {
                         bot.radius = Math.sqrt(bot.radius**2 + (cell.radius**2 * 0.90 * eliteBonus)); 
                         io.emit('slimeSplat', { x: cell.x, y: cell.y, hue: p.hue, radius: cell.radius });
                         
@@ -570,7 +636,14 @@ setInterval(() => {
             let b2 = bots[botIds[j]];
             if (!b1 || !b2) continue;
 
-            let dist = Math.hypot(b2.x - b1.x, b2.y - b1.y) || 1;
+            let dx = b2.x - b1.x;
+            let dy = b2.y - b1.y;
+            if (dx > WORLD_SIZE / 2) dx -= WORLD_SIZE;
+            if (dx < -WORLD_SIZE / 2) dx += WORLD_SIZE;
+            if (dy > WORLD_SIZE / 2) dy -= WORLD_SIZE;
+            if (dy < -WORLD_SIZE / 2) dy += WORLD_SIZE;
+
+            let dist = Math.hypot(dx, dy) || 1;
             
             if (b1.groupId === b2.groupId) {
                 let overlap = (b1.radius + b2.radius) - dist;
@@ -578,8 +651,8 @@ setInterval(() => {
                 if (b1.mergeCooldown <= 0 && b2.mergeCooldown <= 0) {
                     if (overlap > -50) { 
                         let pull = 4; 
-                        b1.x -= (b2.x - b1.x) / dist * -pull; b1.y -= (b2.y - b1.y) / dist * -pull; 
-                        b2.x += (b2.x - b1.x) / dist * -pull; b2.y += (b2.y - b1.y) / dist * -pull; 
+                        b1.x -= (dx / dist) * -pull; b1.y -= (dy / dist) * -pull; 
+                        b2.x += (dx / dist) * -pull; b2.y += (dy / dist) * -pull; 
                     }
                     if (overlap > 10 || dist < Math.max(b1.radius, b2.radius) * 0.85) {
                         if (b1.radius >= b2.radius) {
@@ -590,12 +663,12 @@ setInterval(() => {
                     }
                 } else if (overlap > 0) { 
                     let push = overlap * 0.5; 
-                    b1.x -= (b2.x - b1.x) / dist * push; b1.y -= (b2.y - b1.y) / dist * push; 
-                    b2.x += (b2.x - b1.x) / dist * push; b2.y += (b2.y - b1.y) / dist * push; 
+                    b1.x -= (dx / dist) * push; b1.y -= (dy / dist) * push; 
+                    b2.x += (dx / dist) * push; b2.y += (dy / dist) * push; 
                 } else if (dist > (b1.radius + b2.radius) + 15) {
                     let pull = 2; 
-                    b1.x -= (b2.x - b1.x) / dist * -pull; b1.y -= (b2.y - b1.y) / dist * -pull; 
-                    b2.x += (b2.x - b1.x) / dist * -pull; b2.y += (b2.y - b1.y) / dist * -pull; 
+                    b1.x -= (dx / dist) * -pull; b1.y -= (dy / dist) * -pull; 
+                    b2.x += (dx / dist) * -pull; b2.y += (dy / dist) * -pull; 
                 }
             } else {
                 if (b1.radius > b2.radius * 1.15 && dist < b1.radius) {
@@ -684,7 +757,7 @@ io.on('connection', (socket) => {
 
           viruses = [];
           for(let i = 0; i < 4; i++) {
-              viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+              viruses.push(spawnVirus());
           }
           
           ejectedMass = [];
@@ -780,7 +853,7 @@ io.on('connection', (socket) => {
       const vIndex = viruses.findIndex(v => v.id === virusId);
       if (vIndex !== -1) {
           viruses.splice(vIndex, 1); if (viruses.length < 4) {
-              viruses.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, radius: 65, eaten: 0, vx: 0, vy: 0, lifeTimer: 60 });
+              viruses.push(spawnVirus()); // Safe spawn for nye virusser
           }
       }
   });
