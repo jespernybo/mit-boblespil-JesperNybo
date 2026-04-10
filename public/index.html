@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>BobleOnline - Multiplayer</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #1a1a2e; font-family: sans-serif; user-select: none; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #0b0b1a; font-family: sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; }
-        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 26, 46, 0.7); backdrop-filter: blur(5px); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 11, 26, 0.8); backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
         #start-screen h1 { color: #fff; font-size: 70px; margin-bottom: 10px; text-shadow: 0 0 20px #3498db, 0 0 40px #2980b9; letter-spacing: 2px; }
         #start-screen p { color: #bdc3c7; margin-bottom: 30px; font-size: 18px; }
         
@@ -83,7 +83,6 @@
         .volume-row input[type=range] { width: 60%; -webkit-appearance: none; height: 8px; border-radius: 5px; background: #2c3e50; outline: none; border: 1px solid #1a1a2e;}
         .volume-row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #3498db; cursor: pointer; border: 2px solid #ecf0f1; }
 
-        /* NYT: Ændret play-btn så den ser "slukket" ud når der ikke er netværk */
         #play-btn { padding: 15px 60px; font-size: 28px; background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4); transition: transform 0.2s; }
         #play-btn:hover { transform: scale(1.05); }
         #play-btn:disabled { background: #7f8c8d; cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
@@ -115,7 +114,6 @@
         .controls { font-size: 14px; margin-top: 10px; color: #bdc3c7; line-height: 1.6; }
         #cooldown-container { margin-top: 10px; padding-top: 10px; border-top: 1px solid #34495e; font-size: 16px; }
 
-        /* Chat CSS */
         #chat-container { position: absolute; bottom: 20px; left: 20px; width: 320px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
         #chat-messages { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; pointer-events: auto; }
         .chat-msg { color: white; background: rgba(26, 26, 46, 0.7); border: 1px solid #34495e; padding: 6px 10px; border-radius: 8px; font-size: 14px; text-shadow: 1px 1px 2px black; width: fit-content; max-width: 100%; word-wrap: break-word; transition: opacity 1s; }
@@ -123,7 +121,6 @@
         #chat-input { display: none; pointer-events: auto; padding: 12px; border-radius: 8px; border: 2px solid #3498db; background: rgba(26, 26, 46, 0.95); color: white; font-size: 15px; outline: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         #chat-input::placeholder { color: #7f8c8d; }
 
-        /* Pause & Alliance Menu CSS */
         #pause-menu { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); z-index: 500; flex-direction: column; justify-content: center; align-items: center; color: white; }
         #pause-menu h2 { font-size: 50px; margin-bottom: 20px; color: #f1c40f; text-shadow: 0 0 10px rgba(241, 196, 15, 0.5); }
         #player-list-container { background: rgba(0,0,0,0.4); border: 2px solid #3498db; border-radius: 15px; width: 350px; max-height: 400px; overflow-y: auto; padding: 15px; }
@@ -305,8 +302,10 @@
         const socket = io();
         let otherPlayers = {}; let foods = []; let bots = {}; let viruses = []; let ejectedMass = []; 
         let feeders = []; let minimapBlinkTimer = 0; let soundWaves = [];
-        let spaceDust = []; let slimeParticles = [];
+        let spaceDust = []; let slimeParticles = []; let trailParticles = []; // NYT: Fartspor
         let shockwaves = []; 
+        let powerups = []; 
+        let speedBoostTimer = 0; 
         
         let screenShake = 0; 
         let isPaused = false;
@@ -318,7 +317,6 @@
         const GROWTH_SPEED = 0.35;      
         const WORLD_SIZE = 10000; 
 
-        // NYT: Styrer "Spil Nu" knappen baseret på netværksforbindelsen
         const playBtnElement = document.getElementById('play-btn');
 
         socket.on('connect', () => {
@@ -332,7 +330,6 @@
             if(gameActive) gameOver(false, "⚠️ Mistede forbindelsen til serveren.");
         });
 
-        // NYT: Lytter til serverens indgreb
         socket.on('forceDisconnect', () => {
             if(gameActive) gameOver(false, "⚠️ Du blev afbrudt fra serveren.");
         });
@@ -574,6 +571,20 @@
             else foods.push(data.newFood);
         });
         
+        socket.on('powerupsUpdate', (data) => {
+            powerups = data;
+        });
+
+        socket.on('powerupActivated', (type) => {
+            if (type === 'shield') {
+                invincibilityTimer = 10.0;
+                addLocalChatMessage("🛡️ Skjold aktiveret i 10 sekunder!");
+            } else if (type === 'speed') {
+                speedBoostTimer = 10.0;
+                addLocalChatMessage("⚡ Fart-boost aktiveret i 10 sekunder!");
+            }
+        });
+
         socket.on('currentBots', (serverBots) => { 
             bots = {};
             for(let id in serverBots) {
@@ -814,17 +825,58 @@
         colorSlider.addEventListener('input', () => { if (playerSkinImage) removeCustomSkin(); updateColorPreview(); }); skinUploadInput.addEventListener('change', function(event) { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = function(e) { const img = new Image(); img.onload = function() { const tempCanvas = document.createElement('canvas'); tempCanvas.width = 150; tempCanvas.height = 150; tempCanvas.getContext('2d').drawImage(img, 0, 0, 150, 150); playerSkinBase64 = tempCanvas.toDataURL('image/png'); localStorage.setItem('bobleSkin', playerSkinBase64); playerSkinImage = new Image(); playerSkinImage.onload = () => { removeSkinBtn.style.display = 'inline-block'; updateColorPreview(); }; playerSkinImage.src = playerSkinBase64; }; img.src = e.target.result; }; reader.readAsDataURL(file); } });
         function removeCustomSkin() { playerSkinImage = null; playerSkinBase64 = null; skinUploadInput.value = ""; removeSkinBtn.style.display = 'none'; localStorage.removeItem('bobleSkin'); updateColorPreview(); } removeSkinBtn.addEventListener('click', removeCustomSkin); updateColorPreview(); 
 
+        let lastLevel = 1;
+
         function renderXP(xpAmount) { 
             myCurrentLevel = Math.floor(Math.sqrt(xpAmount / 100)) + 1; 
             if (myCurrentLevel > 90) myCurrentLevel = 90; 
+
+            if (myCurrentLevel > lastLevel && gameActive) {
+                if (playerCells.length > 0) {
+                    let avgX = playerCells.reduce((s, c) => s + c.x, 0) / playerCells.length;
+                    let avgY = playerCells.reduce((s, c) => s + c.y, 0) / playerCells.length;
+                    
+                    shockwaves.push({ 
+                        x: avgX, 
+                        y: avgY, 
+                        radius: 50, 
+                        maxRadius: 600, 
+                        alpha: 1, 
+                        color: 50,
+                        text: "⭐ LEVEL UP: " + myCurrentLevel + " ⭐" 
+                    });
+                    screenShake = 30; 
+                    playEatSpecialSound(); 
+                }
+            }
+            lastLevel = myCurrentLevel;
+
             if(document.getElementById('level-text')) {
                 document.getElementById('level-text').innerText = "⭐ Level: " + myCurrentLevel; 
-                let currentLevelBaseXP = Math.pow(myCurrentLevel - 1, 2) * 100; let nextLevelBaseXP = Math.pow(myCurrentLevel, 2) * 100; let progressPercent = ((xpAmount - currentLevelBaseXP) / (nextLevelBaseXP - currentLevelBaseXP)) * 100; document.getElementById('xp-bar-fill').style.width = progressPercent + "%"; document.getElementById('xp-text').innerText = Math.floor(xpAmount) + " / " + nextLevelBaseXP + " XP"; 
+                let currentLevelBaseXP = Math.pow(myCurrentLevel - 1, 2) * 100; 
+                let nextLevelBaseXP = Math.pow(myCurrentLevel, 2) * 100; 
+                let progressPercent = ((xpAmount - currentLevelBaseXP) / (nextLevelBaseXP - currentLevelBaseXP)) * 100; 
+                document.getElementById('xp-bar-fill').style.width = progressPercent + "%"; 
+                document.getElementById('xp-text').innerText = Math.floor(xpAmount) + " / " + nextLevelBaseXP + " XP"; 
             }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
             renderXP(totalXP); checkUpgrades();
+            
+            // NYT: Initialiser de Magiske Ildfluer (Space Dust)
+            for (let i = 0; i < 150; i++) {
+                spaceDust.push({
+                    x: Math.random() * WORLD_SIZE,
+                    y: Math.random() * WORLD_SIZE,
+                    radius: Math.random() * 3 + 1.5,
+                    parallax: Math.random() * 0.5 + 0.2,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: (Math.random() - 0.5) * 20,
+                    hue: Math.random() * 360,
+                    seed: Math.random() * 1000
+                });
+            }
         });
 
         const resetModal = document.getElementById('reset-modal');
@@ -864,7 +916,6 @@
         function drawStarShape(ctx, x, y, radius, points, inset, rotation) { ctx.beginPath(); for (let i = 0; i < points * 2; i++) { let r = (i % 2 === 0) ? radius : radius * inset; let angle = (i * Math.PI) / points + rotation; ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r); } ctx.closePath(); }
         canvas.width = window.innerWidth; canvas.height = window.innerHeight; let mouse = { x: 0, y: 0 }; let currentZoom = 0.8; let lastTime = performance.now(); let gameActive = false; let playerName = ""; let playerCells = []; let isSprinting = false; let isShooting = false; let lastShootTime = 0; let xpAnimFrame = null; let isMerging = false; let isFrozen = false; let mergeCooldown = 0; 
 
-        // Interval sender heartbeat til serveren hvert sekund
         setInterval(() => {
             if (gameActive) {
                 socket.emit('heartbeat');
@@ -872,7 +923,6 @@
         }, 1000);
 
         document.getElementById('play-btn').addEventListener('click', () => { 
-            // Sikkerhed hvis knappen af en eller anden grund virkede før connect
             if(playBtnElement.disabled) return; 
 
             playerName = nicknameInput.value || "Gæst"; 
@@ -978,6 +1028,7 @@
             mergeCooldown = 0; isQuitting = false; quitTimer = 0; 
             
             invincibilityTimer = 8.0; 
+            speedBoostTimer = 0; 
             
             killBtn.innerText = "💀 Afslut Spil"; killBtn.style.background = "linear-gradient(135deg, #e74c3c, #c0392b)"; killBtn.style.cursor = "pointer"; 
             socket.emit('joinGame', { cells: [{cellId: playerCells[0].cellId, x: playerCells[0].x, y: playerCells[0].y, radius: playerCells[0].radius, vx:0, vy:0}], hue: playerCells[0].hue, name: playerName, skin: playerSkinBase64, level: myCurrentLevel, isInvincible: true, godMode: godMode }); 
@@ -1099,7 +1150,11 @@
             let moveAngle = speed > 0.1 ? Math.atan2(cell.vy, cell.vx) : 0; 
             
             let jiggle = Math.sin(currentTime / 40) * (cell.wobble || 0) * 0.2; 
-            let stretch = Math.max(0.5, Math.min(1 + (speed / 150) + jiggle, 1.7)); 
+            
+            let speedFactor = speed / 15; 
+            let baseStretch = 1 + (speedFactor * 0.02) + jiggle;
+            if (isSprinting) baseStretch += 0.15; 
+            let stretch = Math.max(0.5, Math.min(baseStretch, 1.8)); 
             let squash = 1 / stretch; 
 
             let squashX = 0, squashY = 0, bulgeX = 0, bulgeY = 0;
@@ -1109,6 +1164,7 @@
             else if (cell.y > WORLD_SIZE - cell.radius) { squashY = cell.radius - (WORLD_SIZE - cell.y); bulgeX = squashY * 1.5; }
 
             ctx.save(); ctx.translate(cell.x, cell.y); 
+            ctx.rotate(moveAngle);
             
             if (isInvincible && !godMode) ctx.globalAlpha = 0.4 + Math.abs(Math.sin(currentTime / 150)) * 0.4;
             
@@ -1120,27 +1176,31 @@
                 let a = i * Math.PI / 180;
                 let r = cell.radius + Math.sin(a * 4 + currentTime / 60) * (cell.wobble || 0) * 0.5;
                 
-                let lx = Math.cos(a) * r * stretch; 
-                let ly = Math.sin(a) * r * squash;
-                
-                let rx = lx * Math.cos(moveAngle) - ly * Math.sin(moveAngle);
-                let ry = lx * Math.sin(moveAngle) + ly * Math.cos(moveAngle);
+                let rx = Math.cos(a) * r * stretch; 
+                let ry = Math.sin(a) * r * squash;
                 
                 if (rx > 0) rx += bulgeX; else rx -= bulgeX;
                 if (ry > 0) ry += bulgeY; else ry -= bulgeY;
                 
-                let gx = cell.x + rx; 
-                let gy = cell.y + ry;
+                let originalCos = Math.cos(-moveAngle);
+                let originalSin = Math.sin(-moveAngle);
+                let unrotatedX = rx * originalCos - ry * originalSin;
+                let unrotatedY = rx * originalSin + ry * originalCos;
+                
+                let gx = cell.x + unrotatedX; 
+                let gy = cell.y + unrotatedY;
                 
                 if (gx < 0) gx = 0; 
                 if (gx > WORLD_SIZE) gx = WORLD_SIZE;
                 if (gy < 0) gy = 0; 
                 if (gy > WORLD_SIZE) gy = WORLD_SIZE;
                 
-                let px = gx - cell.x; 
-                let py = gy - cell.y;
+                let finalX = gx - cell.x; 
+                let finalY = gy - cell.y;
+                let finalRx = finalX * Math.cos(moveAngle) + finalY * Math.sin(moveAngle);
+                let finalRy = -finalX * Math.sin(moveAngle) + finalY * Math.cos(moveAngle);
                 
-                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                if (i === 0) ctx.moveTo(finalRx, finalRy); else ctx.lineTo(finalRx, finalRy);
             }
             ctx.closePath();
             
@@ -1152,12 +1212,13 @@
             }
             
             if (skinImg) {
-                ctx.save(); ctx.clip(); ctx.drawImage(skinImg, -cell.radius * 1.5, -cell.radius * 1.5, cell.radius * 3, cell.radius * 3); ctx.restore();
+                ctx.save(); ctx.clip(); ctx.rotate(-moveAngle); ctx.drawImage(skinImg, -cell.radius * 1.5, -cell.radius * 1.5, cell.radius * 3, cell.radius * 3); ctx.restore();
             } else {
                 ctx.fillStyle = `hsl(${hue}, 80%, 60%)`; ctx.fill();
             }
             ctx.lineWidth = 3; ctx.stroke(); 
             
+            ctx.rotate(-moveAngle);
             drawCellText(ctx, name, levelStr, cell.radius, "#f1c40f"); 
             ctx.restore(); 
         }
@@ -1174,6 +1235,12 @@
                     invincibilityTimer -= deltaTime; 
                     if (invincibilityTimer < 0) invincibilityTimer = 0; 
                 }
+                
+                if (speedBoostTimer > 0) {
+                    speedBoostTimer -= deltaTime;
+                    if (speedBoostTimer < 0) speedBoostTimer = 0;
+                }
+
                 let amIInvincible = (invincibilityTimer > 0) || godMode;
 
                 if (playerCells.length === 0) { gameOver(false); } 
@@ -1188,6 +1255,22 @@
                         avgY += c.y * area; 
                         totalArea += area; 
                         totalVirtualArea += (c.virtualArea || area);
+                        
+                        // NYT: Fartspor for spilleren
+                        let speed = Math.hypot(c.vx || 0, c.vy || 0);
+                        if (speed > 5 || isSprinting) {
+                            if (Math.random() < (isSprinting ? 0.5 : 0.1)) {
+                                trailParticles.push({
+                                    x: c.x + (Math.random()-0.5)*c.radius,
+                                    y: c.y + (Math.random()-0.5)*c.radius,
+                                    radius: Math.random() * (c.radius * 0.2) + 2,
+                                    hue: c.hue,
+                                    alpha: 0.6,
+                                    vx: -(c.vx || 0) * 0.3,
+                                    vy: -(c.vy || 0) * 0.3
+                                });
+                            }
+                        }
                     }); 
                     avgX /= totalArea; avgY /= totalArea; 
                     
@@ -1219,8 +1302,11 @@
                         cell.y += cell.vy * (deltaTime * 60); 
                         if (isFrozen) { cell.vx *= 0.5; cell.vy *= 0.5; } else { cell.vx *= 0.88; cell.vy *= 0.88;  }
 
-                        let mouseWorldX = avgX + mouse.x / currentZoom; let mouseWorldY = avgY + mouse.y / currentZoom; let dx = mouseWorldX - cell.x; let dy = mouseWorldY - cell.y; let distToMouse = Math.hypot(dx, dy) || 1; let speedMultiplier = 1 + ((playerUpgrades.speed || 0) * 0.05); 
+                        let mouseWorldX = avgX + mouse.x / currentZoom; let mouseWorldY = avgY + mouse.y / currentZoom; let dx = mouseWorldX - cell.x; let dy = mouseWorldY - cell.y; let distToMouse = Math.hypot(dx, dy) || 1; 
                         
+                        let speedMultiplier = 1 + ((playerUpgrades.speed || 0) * 0.05); 
+                        if (speedBoostTimer > 0) speedMultiplier *= 1.8;
+
                         let baseSpeed = Math.max(1.2, 35 / Math.sqrt(cell.radius)) * speedMultiplier * (deltaTime * 60);
                         
                         if (isSprinting && cell.radius > 25 && !cell.isBeingAbsorbed) { 
@@ -1501,8 +1587,25 @@
                     b.x += (b.targetX - b.x) * lerpFactor;
                     b.y += (b.targetY - b.y) * lerpFactor;
                     b.radius += (b.targetRadius - b.radius) * lerpFactor;
+                    
+                    // NYT: Fartspor for bots
+                    let speed = Math.hypot(b.vx || 0, b.vy || 0);
+                    if (speed > 5 || b.isSprinting) {
+                        if (Math.random() < (b.isSprinting ? 0.4 : 0.05)) {
+                            trailParticles.push({
+                                x: b.x + (Math.random()-0.5)*b.radius,
+                                y: b.y + (Math.random()-0.5)*b.radius,
+                                radius: Math.random() * (b.radius * 0.2) + 2,
+                                hue: b.hue,
+                                alpha: 0.5,
+                                vx: -(b.vx || 0) * 0.3,
+                                vy: -(b.vy || 0) * 0.3
+                            });
+                        }
+                    }
                 }
             }
+            
             for (let id in otherPlayers) {
                 let p = otherPlayers[id];
                 if (!p.cells) continue;
@@ -1528,7 +1631,12 @@
             ctx.translate(-avgX, -avgY); 
             const viewLeft = avgX - (canvas.width / 2) / currentZoom - 100, viewRight = avgX + (canvas.width / 2) / currentZoom + 100; const viewTop = avgY - (canvas.height / 2) / currentZoom - 100, viewBottom = avgY + (canvas.height / 2) / currentZoom + 100;
             
+            // NYT: Magiske Ildfluer (Opdateret Space Dust)
             spaceDust.forEach(d => {
+                d.x += d.vx * deltaTime;
+                d.y += d.vy * deltaTime;
+                d.hue = (d.hue + deltaTime * 15) % 360; 
+
                 let halfW = WORLD_SIZE / 2;
                 let px = avgX - halfW + ((d.x - avgX + halfW + (avgX * (1 - d.parallax))) % WORLD_SIZE);
                 if (px < avgX - halfW) px += WORLD_SIZE;
@@ -1537,25 +1645,120 @@
                 if (py < avgY - halfW) py += WORLD_SIZE;
 
                 if (px > viewLeft && px < viewRight && py > viewTop && py < viewBottom) {
-                    ctx.globalAlpha = d.alpha;
+                    let pulse = 0.5 + Math.sin(currentTime / 500 + d.seed) * 0.5;
+                    ctx.globalAlpha = pulse * 0.8;
                     ctx.beginPath();
                     ctx.arc(px, py, d.radius, 0, Math.PI*2);
-                    ctx.fillStyle = d.color;
+                    ctx.fillStyle = `hsl(${d.hue}, 100%, 75%)`;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = `hsl(${d.hue}, 100%, 60%)`;
                     ctx.fill();
+                    ctx.shadowBlur = 0;
                 }
             });
             ctx.globalAlpha = 1.0;
 
-            ctx.strokeStyle = 'rgba(44, 62, 80, 0.5)'; ctx.lineWidth = 1; const gridSize = 100; const startX = Math.max(0, Math.floor(viewLeft / gridSize) * gridSize); const startY = Math.max(0, Math.floor(viewTop / gridSize) * gridSize); for (let x = startX; x <= Math.min(WORLD_SIZE, viewRight); x += gridSize) { ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, Math.min(WORLD_SIZE, viewBottom)); ctx.stroke(); } for (let y = startY; y <= Math.min(WORLD_SIZE, viewBottom); y += gridSize) { ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(Math.min(WORLD_SIZE, viewRight), y); ctx.stroke(); } ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE); 
+            // Tegn gitter
+            ctx.strokeStyle = 'rgba(44, 62, 80, 0.5)'; ctx.lineWidth = 1; const gridSize = 100; const startX = Math.max(0, Math.floor(viewLeft / gridSize) * gridSize); const startY = Math.max(0, Math.floor(viewTop / gridSize) * gridSize); for (let x = startX; x <= Math.min(WORLD_SIZE, viewRight); x += gridSize) { ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, Math.min(WORLD_SIZE, viewBottom)); ctx.stroke(); } for (let y = startY; y <= Math.min(WORLD_SIZE, viewBottom); y += gridSize) { ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(Math.min(WORLD_SIZE, viewRight), y); ctx.stroke(); } 
             
+            // NYT: Glødende Energi-skjold kant (Laser-kant)
+            ctx.save();
+            let borderPulse = Math.abs(Math.sin(currentTime / 400));
+            ctx.strokeStyle = `rgba(0, 255, 255, ${0.4 + borderPulse * 0.6})`;
+            ctx.lineWidth = 15 + borderPulse * 10;
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 30 + borderPulse * 20;
+            ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+            
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 0;
+            ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+            ctx.restore();
+            
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                let pu = powerups[i];
+                if (pu.x + 30 > viewLeft && pu.x - 30 < viewRight && pu.y + 30 > viewTop && pu.y - 30 < viewBottom) {
+                    ctx.save();
+                    ctx.translate(pu.x, pu.y);
+                    let pulse = Math.abs(Math.sin(currentTime / 200)) * 0.2;
+                    ctx.scale(1 + pulse, 1 + pulse);
+                    
+                    if (pu.type === 'shield') {
+                        ctx.fillStyle = 'rgba(155, 89, 182, 0.8)';
+                        ctx.shadowColor = '#8e44ad';
+                    } else {
+                        ctx.fillStyle = 'rgba(52, 152, 219, 0.8)';
+                        ctx.shadowColor = '#2980b9';
+                    }
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, pu.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(pu.type === 'shield' ? '🛡️' : '⚡', 0, 0);
+                    ctx.restore();
+                }
+                
+                let eaten = false;
+                if (gameActive && playerCells.length > 0) {
+                    playerCells.forEach(cell => {
+                        if (!eaten && Math.hypot(cell.x - pu.x, cell.y - pu.y) < cell.radius) {
+                            eaten = true;
+                            socket.emit('atePowerup', pu.id);
+                            powerups.splice(i, 1);
+                            playEatSpecialSound();
+                            screenShake = 10;
+                        }
+                    });
+                }
+            }
+
             for (let i = soundWaves.length - 1; i >= 0; i--) { let wave = soundWaves[i]; wave.radius += 5; wave.alpha -= deltaTime * 2.0; if (wave.alpha <= 0) { soundWaves.splice(i, 1); continue; } ctx.beginPath(); ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2); ctx.strokeStyle = `hsla(${wave.hue}, 100%, 70%, ${wave.alpha})`; ctx.lineWidth = 4; ctx.stroke(); }
 
             for (let i = 0; i < feeders.length; i++) { let f = feeders[i]; if (f.x + f.radius > viewLeft && f.x - f.radius < viewRight && f.y + f.radius > viewTop && f.y - f.radius < viewBottom) { f.rotation = (f.rotation || 0) + 0.005; let gradient = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.radius); gradient.addColorStop(0, `hsla(50, 100%, 80%, 1)`); gradient.addColorStop(0.5, `hsla(40, 100%, 50%, 0.8)`); gradient.addColorStop(1, `hsla(30, 100%, 40%, 0.2)`); ctx.fillStyle = gradient; drawStarShape(ctx, f.x, f.y, f.radius, 5, 0.4, f.rotation); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = `hsla(50, 100%, 70%, 0.8)`; ctx.stroke(); } }
             
+            // NYT: Tegn fartspor (Trails) bagved mad og spillere
+            for (let i = trailParticles.length - 1; i >= 0; i--) {
+                let p = trailParticles[i];
+                p.x += p.vx * deltaTime * 60;
+                p.y += p.vy * deltaTime * 60;
+                p.alpha -= deltaTime * 1.5;
+                if (p.alpha <= 0) {
+                    trailParticles.splice(i, 1);
+                    continue;
+                }
+                if (p.x > viewLeft && p.x < viewRight && p.y > viewTop && p.y < viewBottom) {
+                    ctx.globalAlpha = p.alpha;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsl(${p.hue}, 100%, 75%)`;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = `hsl(${p.hue}, 100%, 75%)`;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+            ctx.globalAlpha = 1.0;
+
+            // NYT: Åndende, pulserende Mad
             for (let i = foods.length - 1; i >= 0; i--) { 
                 const food = foods[i]; 
-                if (food.x + 10 > viewLeft && food.x - 10 < viewRight && food.y + 10 > viewTop && food.y - 10 < viewBottom) { 
-                    ctx.beginPath(); ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2); ctx.fillStyle = `hsl(${food.hue}, 80%, 60%)`; ctx.fill(); 
+                if (food.x + 15 > viewLeft && food.x - 15 < viewRight && food.y + 15 > viewTop && food.y - 15 < viewBottom) { 
+                    let floatOffset = Math.sin(currentTime / 200 + food.id * 10) * 1.5;
+                    let drawRadius = Math.max(0.5, food.radius + floatOffset);
+                    
+                    ctx.beginPath(); 
+                    ctx.arc(food.x, food.y, drawRadius, 0, Math.PI * 2); 
+                    ctx.fillStyle = `hsl(${food.hue}, 100%, 75%)`; 
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = `hsl(${food.hue}, 100%, 60%)`;
+                    ctx.fill(); 
+                    ctx.shadowBlur = 0;
                 } 
                 let eaten = false;
                 if (gameActive && playerCells.length > 0) { 
@@ -1705,9 +1908,69 @@
                         ctx.beginPath(); ctx.arc(mapX + otherPlayers[id].cells[0].x * scale, mapY + otherPlayers[id].cells[0].y * scale, 2.5, 0, Math.PI * 2); ctx.fill(); 
                     } 
                 } 
-                for (let id in bots) { ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(mapX + bots[id].x * scale, mapY + bots[id].y * scale, 2, 0, Math.PI * 2); ctx.fill(); } 
+                
+                for (let id in bots) { 
+                    let b = bots[id];
+                    let mapXPos = mapX + b.x * scale;
+                    let mapYPos = mapY + b.y * scale;
+                    
+                    if (b.behavior === 'elite') {
+                        let pulse = Math.abs(Math.sin(currentTime / 250));
+                        ctx.beginPath();
+                        ctx.arc(mapXPos, mapYPos, 5 + pulse * 5, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(231, 76, 60, ${0.1 + pulse * 0.4})`;
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = `rgba(231, 76, 60, ${0.3 + pulse * 0.5})`;
+                        ctx.stroke();
+                        
+                        ctx.fillStyle = '#e74c3c'; 
+                        ctx.beginPath(); ctx.arc(mapXPos, mapYPos, 2.5, 0, Math.PI * 2); ctx.fill();
+                    } else {
+                        ctx.fillStyle = 'orange'; 
+                        ctx.beginPath(); ctx.arc(mapXPos, mapYPos, 2, 0, Math.PI * 2); ctx.fill(); 
+                    }
+                } 
                 
                 if (playerCells.length > 0) { ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(mapX + avgX * scale, mapY + avgY * scale, 3, 0, Math.PI * 2); ctx.fill(); } 
+                
+                let powerupY = mapY - 10;
+                
+                function drawTimerBox(icon, label, color, timeRemaining) {
+                    let boxW = 150;
+                    let boxH = 30;
+                    let boxX = mapX;
+                    powerupY -= boxH;
+                    
+                    ctx.fillStyle = 'rgba(26, 26, 46, 0.8)';
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(boxX, powerupY, boxW, boxH, 5);
+                    else ctx.rect(boxX, powerupY, boxW, boxH);
+                    ctx.fill();
+                    
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = color;
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(icon + " " + label, boxX + 10, powerupY + boxH / 2);
+                    
+                    ctx.fillStyle = color;
+                    ctx.textAlign = 'right';
+                    ctx.fillText(Math.ceil(timeRemaining) + "s", boxX + boxW - 10, powerupY + boxH / 2);
+                    
+                    powerupY -= 10; 
+                }
+
+                if (invincibilityTimer > 0 && !godMode) {
+                    drawTimerBox('🛡️', 'Skjold', '#9b59b6', invincibilityTimer);
+                }
+                if (speedBoostTimer > 0) {
+                    drawTimerBox('⚡', 'Fart', '#3498db', speedBoostTimer);
+                }
             }
         }
         animate();

@@ -12,6 +12,7 @@ let bots = {};
 let viruses = []; 
 let ejectedMass = []; 
 let feeders = []; 
+let powerups = []; // NYT: Array til power-ups
 let feederSpawnTimer = 0; 
 let pendingBotRespawns = []; 
 const MAX_FEEDERS = 1; 
@@ -46,6 +47,20 @@ function isCloseEnough(playerCells, targetX, targetY, targetRadius) {
     }
     return false;
 }
+
+// NYT: Power-up spawner
+setInterval(() => {
+    if (powerups.length < 15) {
+        powerups.push({
+            id: Math.random(),
+            x: Math.random() * WORLD_SIZE,
+            y: Math.random() * WORLD_SIZE,
+            type: Math.random() > 0.5 ? 'speed' : 'shield',
+            radius: 20
+        });
+        io.emit('powerupsUpdate', powerups);
+    }
+}, 4000);
 
 for(let i = 0; i < 1500; i++) {
     foods.push({ id: Math.random(), x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, hue: Math.floor(Math.random() * 360), radius: 6 });
@@ -627,14 +642,23 @@ setInterval(() => {
         }
     }
     
-    io.emit('virusesUpdate', viruses); io.emit('botsUpdate', bots); io.emit('ejectedMassUpdate', ejectedMass); io.emit('feedersUpdate', feeders); 
+    io.emit('virusesUpdate', viruses); 
+    io.emit('botsUpdate', bots); 
+    io.emit('ejectedMassUpdate', ejectedMass); 
+    io.emit('feedersUpdate', feeders); 
 }, 1000 / 30); 
 
 const PORT = process.env.PORT || 3000;
 io.on('connection', (socket) => {
   alliances[socket.id] = []; 
 
-  socket.emit('currentPlayers', players); socket.emit('currentFood', foods); socket.emit('currentBots', bots); socket.emit('virusesUpdate', viruses); socket.emit('ejectedMassUpdate', ejectedMass); socket.emit('feedersUpdate', feeders); 
+  socket.emit('currentPlayers', players); 
+  socket.emit('currentFood', foods); 
+  socket.emit('currentBots', bots); 
+  socket.emit('virusesUpdate', viruses); 
+  socket.emit('ejectedMassUpdate', ejectedMass); 
+  socket.emit('feedersUpdate', feeders); 
+  socket.emit('powerupsUpdate', powerups); // NYT
 
   socket.on('joinGame', (playerData) => {
       if (Object.keys(players).length === 0) {
@@ -656,11 +680,13 @@ io.on('connection', (socket) => {
           }
           
           ejectedMass = [];
+          powerups = []; // Nulstil power-ups
 
           io.emit('currentBots', bots);
           io.emit('currentFood', foods);
           io.emit('virusesUpdate', viruses);
           io.emit('ejectedMassUpdate', ejectedMass);
+          io.emit('powerupsUpdate', powerups);
       }
 
       players[socket.id] = { cells: playerData.cells, hue: playerData.hue, name: playerData.name, skin: playerData.skin, level: playerData.level, isInvincible: true, godMode: false, lastHeartbeat: Date.now(), score: 500 }; 
@@ -680,7 +706,6 @@ io.on('connection', (socket) => {
       players[socket.id].level = movementData.level; 
       players[socket.id].isInvincible = movementData.isInvincible; 
       players[socket.id].godMode = movementData.godMode; 
-      // NYT: Gemmer spillerens score på serveren og sender den ud til andre
       players[socket.id].score = movementData.score;
       socket.broadcast.emit('playerMoved', { id: socket.id, cells: movementData.cells, isSprinting: movementData.isSprinting, level: movementData.level, isInvincible: movementData.isInvincible, godMode: movementData.godMode, score: movementData.score });
     }
@@ -693,6 +718,17 @@ io.on('connection', (socket) => {
         foods[foodIndex] = newFood; 
         io.emit('foodUpdate', { eatenId: foodId, newFood: newFood });
     }
+  });
+
+  // NYT: Spiser en power-up
+  socket.on('atePowerup', (id) => {
+      let idx = powerups.findIndex(p => p.id === id);
+      if (idx !== -1) {
+          let pData = powerups[idx];
+          powerups.splice(idx, 1);
+          io.emit('powerupsUpdate', powerups);
+          socket.emit('powerupActivated', pData.type);
+      }
   });
 
   socket.on('shootMass', (massData) => {
